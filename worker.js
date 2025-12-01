@@ -338,11 +338,39 @@ async function main() {
     parentPort.postMessage(`[${PROFILE_ID}]   - Số kênh: ${CHANNEL_IDS.length}`);
     parentPort.postMessage(`[${PROFILE_ID}]   - Danh sách kênh: ${CHANNEL_IDS.join(', ')}`);
     
-    // Lấy wsEndpoint từ workerData (được truyền từ main process)
-    const wsEndpoint = workerData.wsEndpoint;
+    // Lấy wsEndpoint từ workerData (được truyền từ main process nếu dùng Electron UI)
+    // Nếu không có (chạy từ script CLI / main cũ) thì tự mở profile qua Genlogin.
+    let wsEndpoint = workerData.wsEndpoint;
     if (!wsEndpoint) {
-        parentPort.postMessage(`❌ [${PROFILE_ID}] ERROR: wsEndpoint không được cung cấp!`);
-        return;
+        parentPort.postMessage(`[${PROFILE_ID}] 🔍 wsEndpoint chưa được cung cấp, đang thử mở profile trong Genlogin...`);
+        try {
+            const gen = new Genlogin("");
+
+            // Thử lấy wsEndpoint nếu profile đã chạy sẵn
+            const endpointResult = await gen.getWsEndpoint(PROFILE_ID);
+            if (endpointResult?.data?.wsEndpoint) {
+                wsEndpoint = endpointResult.data.wsEndpoint;
+            } else {
+                // Nếu chưa có, gọi runProfile và retry tối đa 15 lần (giống logic electron-main.js)
+                for (let i = 0; i < 15 && !wsEndpoint; i++) {
+                    parentPort.postMessage(`[${PROFILE_ID}] 🔄 Đang mở profile trong Genlogin... (retry ${i + 1}/15)`);
+                    const result = await gen.runProfile(PROFILE_ID);
+                    if (result.success && result.wsEndpoint) {
+                        wsEndpoint = result.wsEndpoint;
+                        break;
+                    }
+                    await sleep(1000);
+                }
+            }
+        } catch (err) {
+            parentPort.postMessage(`❌ [${PROFILE_ID}] Lỗi khi mở profile trong Genlogin: ${err.message}`);
+            return;
+        }
+
+        if (!wsEndpoint) {
+            parentPort.postMessage(`❌ [${PROFILE_ID}] ERROR: Không thể lấy wsEndpoint từ Genlogin. Vui lòng kiểm tra Genlogin đã chạy và profile ${PROFILE_ID} có hợp lệ không.`);
+            return;
+        }
     }
     
     parentPort.postMessage(`[${PROFILE_ID}] 🔗 Đang kết nối với browser qua wsEndpoint...`);
