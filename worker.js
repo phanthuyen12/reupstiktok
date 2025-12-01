@@ -1,4 +1,50 @@
 // worker.js
+const { Blob: NodeBlob, File: NodeFile } = require("buffer");
+
+/**
+ * Older Node.js releases (especially <=18) might not expose the WHATWG File API globally.
+ * Some third-party libraries expect `global.File` to exist, so we provide a light polyfill.
+ */
+if (typeof global.File === "undefined") {
+    if (typeof NodeFile !== "undefined") {
+        global.File = NodeFile;
+    } else if (typeof NodeBlob !== "undefined") {
+        class NodeCompatibleFile extends NodeBlob {
+            constructor(fileBits = [], fileName = "", options = {}) {
+                super(fileBits, options);
+                this.name = fileName;
+                this.lastModified = options.lastModified ?? Date.now();
+            }
+        }
+        global.File = NodeCompatibleFile;
+    } else {
+        class MinimalFilePolyfill {
+            constructor(fileBits = [], fileName = "", options = {}) {
+                this[Symbol.toStringTag] = "File";
+                this.name = fileName;
+                this.lastModified = options.lastModified ?? Date.now();
+                this.size = fileBits.reduce((acc, chunk) => acc + Buffer.byteLength(chunk), 0);
+                this.type = options.type ?? "";
+                this._chunks = fileBits;
+            }
+            async arrayBuffer() {
+                return Buffer.concat(this._chunks.map(chunk => Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))).buffer;
+            }
+            stream() {
+                const { Readable } = require("stream");
+                return Readable.from(this._chunks);
+            }
+            text() {
+                return Promise.resolve(Buffer.concat(this._chunks.map(chunk => Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))).toString());
+            }
+            slice() {
+                return new MinimalFilePolyfill([], this.name, { type: this.type });
+            }
+        }
+        global.File = MinimalFilePolyfill;
+    }
+}
+
 const { workerData, parentPort } = require("worker_threads");
 const { google } = require("googleapis");
 const puppeteer = require("puppeteer-core");
