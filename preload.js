@@ -1,0 +1,41 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Profiles
+  loadProfiles: () => ipcRenderer.invoke('load-profiles'),
+  selectProfilesFile: () => ipcRenderer.invoke('select-profiles-file'),
+  getProfiles: () => ipcRenderer.invoke('get-profiles'),
+
+  // Workers
+  startWorker: (profileId) => ipcRenderer.invoke('start-worker', profileId),
+  stopWorker: (profileId) => ipcRenderer.invoke('stop-worker', profileId),
+  stopAllWorkers: () => ipcRenderer.invoke('stop-all-workers'),
+
+  // Logs
+  getWorkerLogs: (profileId) => ipcRenderer.invoke('get-worker-logs', profileId),
+  onWorkerLog: (callback) => {
+    ipcRenderer.on('worker-log', (event, data) => callback(data));
+  },
+  onWorkerStatsUpdate: (callback) => {
+    ipcRenderer.on('worker-stats-update', (event, data) => callback(data));
+  },
+  onWorkerError: (callback) => {
+    ipcRenderer.on('worker-error', (event, data) => callback(data));
+  },
+  onWorkerExit: (callback) => {
+    ipcRenderer.on('worker-exit', (event, data) => callback(data));
+  },
+
+  // Genlogin
+  openProfile: (profileId) => ipcRenderer.invoke('open-profile', profileId),
+  openProfilesBatch: (profileIds) => ipcRenderer.invoke('open-profiles-batch', profileIds),
+
+  // Analytics
+  getAnalytics: () => ipcRenderer.invoke('get-analytics'),
+
+  // Remove listeners
+  removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
+});
+

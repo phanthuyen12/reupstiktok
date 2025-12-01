@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Multi-Channel Auto Detector & TikTok Re-Uploader</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">🎬</div>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-page="dashboard">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          <span class="nav-tooltip">Dashboard</span>
+        </a>
+        <a href="#" class="nav-item" data-page="profiles">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span class="nav-tooltip">Profiles</span>
+        </a>
+        <a href="#" class="nav-item" data-page="logs">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <span class="nav-tooltip">Worker Logs</span>
+        </a>
+        <a href="#" class="nav-item" data-page="settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M12 1v6m0 6v6m9-9h-6m-6 0H3"></path>
+          </svg>
+          <span class="nav-tooltip">Settings</span>
+        </a>
+        <a href="#" class="nav-item" data-page="about">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          <span class="nav-tooltip">About</span>
+        </a>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="header">
+        <h1 class="page-title">Profiles Manager</h1>
+        <div class="header-stats">
+          <div class="stat-item">
+            <span class="stat-label">Running:</span>
+            <span class="stat-value" id="running-count">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Total Videos:</span>
+            <span class="stat-value" id="total-videos">0</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Action Bar -->
+      <div class="action-bar">
+        <button class="btn btn-primary" id="btn-load-profiles">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Load Profiles
+        </button>
+        <button class="btn btn-secondary" id="btn-analytics">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          Analytics
+        </button>
+        <button class="btn btn-secondary" id="btn-open-profiles">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+          Open Profiles (Batch)
+        </button>
+        <button class="btn btn-success" id="btn-start-workers">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Start Workers (Selected)
+        </button>
+        <button class="btn btn-danger" id="btn-stop-all">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="6" y="6" width="12" height="12"></rect>
+          </svg>
+          Stop All
+        </button>
+      </div>
+
+      <!-- Profiles Table -->
+      <div class="table-container">
+        <div class="table-header">
+          <div class="table-search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input type="text" id="search-input" placeholder="Search by Profile ID or Channel ID...">
+          </div>
+          <div class="table-filters">
+            <select id="status-filter">
+              <option value="all">All Status</option>
+              <option value="running">Running</option>
+              <option value="stopped">Stopped</option>
+              <option value="error">Error</option>
+            </select>
+          </div>
+        </div>
+        <table class="data-table" id="profiles-table">
+          <thead>
+            <tr>
+              <th>
+                <input type="checkbox" id="select-all">
+              </th>
+              <th data-sort="status">Status</th>
+              <th data-sort="profileId">Profile ID</th>
+              <th>API KEY</th>
+              <th data-sort="channels">Channel IDs</th>
+              <th data-sort="videosToday">Videos Today</th>
+              <th>Worker PID</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="profiles-tbody">
+            <tr class="empty-row">
+              <td colspan="8">
+                <div class="empty-state">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                  <p>No profiles loaded. Click "Load Profiles" to get started.</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="table-footer">
+          <div class="pagination-info">
+            Showing <span id="showing-from">0</span> - <span id="showing-to">0</span> of <span id="total-count">0</span>
+          </div>
+          <div class="pagination">
+            <button class="pagination-btn" id="prev-page" disabled>Previous</button>
+            <span class="pagination-page" id="current-page">1</span>
+            <button class="pagination-btn" id="next-page" disabled>Next</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Profile Detail Drawer -->
+    <div class="drawer" id="profile-drawer">
+      <div class="drawer-header">
+        <h2>Profile Details</h2>
+        <button class="drawer-close" id="close-drawer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="drawer-content" id="drawer-content">
+        <!-- Content will be populated by JS -->
+      </div>
+    </div>
+
+    <!-- Log Viewer Panel -->
+    <div class="log-panel" id="log-panel">
+      <div class="log-panel-header">
+        <h3>Worker Logs - <span id="log-profile-id"></span></h3>
+        <div class="log-actions">
+          <button class="btn-icon" id="copy-logs">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+          <button class="btn-icon" id="clear-logs">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+          <button class="btn-icon" id="close-log-panel">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="log-content" id="log-content">
+        <!-- Logs will be populated here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <div class="modal-overlay" id="modal-overlay"></div>
+
+  <!-- Analytics Modal -->
+  <div class="modal" id="analytics-modal">
+    <div class="modal-header">
+      <h2>Analytics Dashboard</h2>
+      <button class="modal-close" id="close-analytics">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-content" id="analytics-content">
+      <!-- Analytics content -->
+    </div>
+  </div>
+
+  <!-- Batch Open Modal -->
+  <div class="modal" id="batch-open-modal">
+    <div class="modal-header">
+      <h2>Open Profiles in Genlogin</h2>
+      <button class="modal-close" id="close-batch-open">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-content">
+      <div id="batch-open-progress">
+        <!-- Progress will be shown here -->
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
+

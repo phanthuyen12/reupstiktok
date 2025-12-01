@@ -1,4 +1,12 @@
 {
+  "name": "youtube-tiktok-reuploader",
+  "version": "1.0.0",
+  "description": "YouTube Multi-Channel Auto Detector & TikTok Re-Uploader",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
     "axios": "^1.13.2",
@@ -6,8 +14,12 @@
     "express": "^5.1.0",
     "googleapis": "^166.0.0",
     "puppeteer": "^24.31.0",
+    "puppeteer-core": "^24.31.0",
     "youtubei.js": "^16.0.1",
     "yt-dlp-exec": "^1.0.2",
     "ytdl-core": "^4.11.5"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0"
   }
 }

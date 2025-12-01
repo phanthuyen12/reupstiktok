@@ -2,9 +2,9 @@
 const { workerData, parentPort } = require("worker_threads");
 const { google } = require("googleapis");
 const puppeteer = require("puppeteer-core");
-const { getDownloadLink, downloadVideo, make65sVideo } = require("./dow.js");
+const { getDownloadLink, downloadVideo, make65sVideo, mergeVideoAudio } = require("./dow.js");
 const path = require("path");
-const Genlogin = require("./Genlogin");
+const Genlogin = require("./Genlogin.js");
 const { performance } = require("perf_hooks");
 
 const API_KEY = workerData.apiKey;
@@ -132,7 +132,7 @@ async function main() {
                             downloadVideo(link.audio, "temp/audio.mp4"),
                         ]);
                         rawFile = "temp/merged.mp4";
-                        await make65sVideo(videoFile, rawFile);
+                        await mergeVideoAudio(videoFile, audioFile, rawFile);
                         parentPort.postMessage(`[${PROFILE_ID}] ✅ Download video + audio & merge xong`);
                     }
                     const endDownload = performance.now();

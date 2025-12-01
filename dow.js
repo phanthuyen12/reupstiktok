@@ -1,15 +1,16 @@
 // youtubeDownloader.js
-import ytdl from "@distube/ytdl-core";
-import fetch from "node-fetch";
-import { exec } from "child_process";
-import fs from "fs";
-import path from "path";
+const ytdl = require("@distube/ytdl-core");
+const { exec } = require("child_process");
+const fs = require("fs");
+const path = require("path");
 
 // ====== Cấu hình ======
 const ROOT = path.resolve();
-const FFMPEG = path.join(ROOT, "ffmpeg.exe");
-const FFPROBE = path.join(ROOT, "ffprobe.exe");
-const ARIA2 = path.join(ROOT, "aria2c.exe");
+const isWindows = process.platform === 'win32';
+const ext = isWindows ? '.exe' : '';
+const FFMPEG = path.join(ROOT, `ffmpeg${ext}`);
+const FFPROBE = path.join(ROOT, `ffprobe${ext}`);
+const ARIA2 = path.join(ROOT, `aria2c${ext}`);
 
 const TEMP = path.join(ROOT, "temp");
 const OUT = path.join(ROOT, "output");
@@ -26,7 +27,7 @@ function run(cmd) {
 }
 
 // Kiểm tra URL có tồn tại
-export async function checkUrl(url) {
+async function checkUrl(url) {
   try {
     const res = await fetch(url, { method: "HEAD" });
     return res.ok;
@@ -36,7 +37,7 @@ export async function checkUrl(url) {
 }
 
 // Lấy link download tốt nhất
-export async function getDownloadLink(videoUrl) {
+async function getDownloadLink(videoUrl) {
   try {
     const info = await ytdl.getInfo(videoUrl);
 
@@ -83,13 +84,7 @@ export async function getDownloadLink(videoUrl) {
 }
 
 // Download file với aria2c
-// export async function downloadVideo(url, filename) {
-//   const filepath = path.join(TEMP, filename);
-//   const cmd = `"${ARIA2}" -x16 -s16 -k1M "${url}" -o "${filename}" --dir="${TEMP}" --allow-overwrite=true`;
-//   await run(cmd);
-//   return filepath;
-// }
-export async function downloadVideo(url, filename) {
+async function downloadVideo(url, filename) {
   const filepath = path.join(TEMP, filename);
 
   // Chỉ 1 dòng, đúng syntax aria2c
@@ -100,14 +95,21 @@ export async function downloadVideo(url, filename) {
 }
 
 // Lấy duration video
-export async function getDuration(file) {
+async function getDuration(file) {
   const cmd = `"${FFPROBE}" -v error -show_entries format=duration -of csv=p=0 "${file}"`;
   const out = await run(cmd);
   return parseFloat(out);
 }
 
+// Merge video và audio
+async function mergeVideoAudio(videoFile, audioFile, outputFile) {
+  const cmd = `"${FFMPEG}" -y -i "${videoFile}" -i "${audioFile}" -c copy "${outputFile}"`;
+  await run(cmd);
+  return outputFile;
+}
+
 // Ghép 65s (copy stream, không nén)
-export async function make65sVideo(input, output) {
+async function make65sVideo(input, output) {
   const dur = await getDuration(input);
   if (dur >= 65) {
     fs.copyFileSync(input, output);
@@ -125,7 +127,7 @@ export async function make65sVideo(input, output) {
 }
 
 // Download + merge 65s
-export async function downloadAndMake65s(videoUrl) {
+async function downloadAndMake65s(videoUrl) {
   const link = await getDownloadLink(videoUrl);
   let rawFile;
 
@@ -138,10 +140,20 @@ export async function downloadAndMake65s(videoUrl) {
     ]);
 
     rawFile = path.join(TEMP, "merged.mp4");
-    await run(`"${FFMPEG}" -y -i "${videoFile}" -i "${audioFile}" -c copy "${rawFile}"`);
+    await mergeVideoAudio(videoFile, audioFile, rawFile);
   }
 
   const finalFile = path.join(OUT, `video_65s_${Date.now()}.mp4`);
   await make65sVideo(rawFile, finalFile);
   return finalFile;
 }
+
+module.exports = {
+  checkUrl,
+  getDownloadLink,
+  downloadVideo,
+  getDuration,
+  mergeVideoAudio,
+  make65sVideo,
+  downloadAndMake65s
+};
