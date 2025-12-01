@@ -41,7 +41,10 @@ async function initBrowser(wsEndpoint) {
 async function checkChannel(channelId) {
     try {
         const ch = await youtube.channels.list({ part: "contentDetails", id: channelId });
-        if (!ch.data.items.length) return [];
+        if (!ch.data.items.length) {
+            parentPort.postMessage(`[${PROFILE_ID}] ⚠️ Không tìm thấy kênh YouTube: ${channelId}`);
+            return [];
+        }
         const uploadsId = ch.data.items[0].contentDetails.relatedPlaylists.uploads;
         const playlist = await youtube.playlistItems.list({ part: "snippet", playlistId: uploadsId, maxResults: 5 });
 
@@ -61,7 +64,7 @@ async function checkChannel(channelId) {
         }
         return newVideos;
     } catch (err) {
-        parentPort.postMessage(`❌ [${PROFILE_ID}] ERROR: ${err.message}`);
+        parentPort.postMessage(`❌ [${PROFILE_ID}] ERROR khi kiểm tra kênh ${channelId}: ${err.message}`);
         return [];
     }
 }
@@ -132,9 +135,22 @@ async function main() {
     const wsEndpoint = workerData.wsEndpoint;
     let { page, input } = await initBrowser(wsEndpoint);
 
+    parentPort.postMessage(`[${PROFILE_ID}] ✅ Đã khởi động monitoring. Đang theo dõi ${CHANNEL_IDS.length} kênh YouTube...`);
+    
+    let checkCount = 0;
     while (true) {
+        checkCount++;
+        parentPort.postMessage(`[${PROFILE_ID}] 🔄 Đang kiểm tra kênh YouTube (lần ${checkCount})...`);
+        
         for (const chId of CHANNEL_IDS) {
+            parentPort.postMessage(`[${PROFILE_ID}] 🔍 Đang kiểm tra kênh: ${chId}`);
             const videos = await checkChannel(chId);
+            
+            if (videos.length > 0) {
+                parentPort.postMessage(`[${PROFILE_ID}] 🎉 Tìm thấy ${videos.length} video mới từ kênh ${chId}`);
+            } else {
+                parentPort.postMessage(`[${PROFILE_ID}] ℹ️ Không có video mới từ kênh ${chId}`);
+            }
 
             for (const v of videos) {
                 const startTotal = performance.now();

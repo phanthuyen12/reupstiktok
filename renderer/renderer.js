@@ -54,9 +54,10 @@ function setupEventListeners() {
   // Action buttons
   document.getElementById('btn-load-profiles').addEventListener('click', handleLoadProfiles);
   document.getElementById('btn-analytics').addEventListener('click', showAnalytics);
-  document.getElementById('btn-open-profiles').addEventListener('click', handleOpenProfilesBatch);
-  document.getElementById('btn-start-workers').addEventListener('click', handleStartWorkers);
-  document.getElementById('btn-stop-all').addEventListener('click', handleStopAll);
+  document.getElementById('btn-open-profiles-batch').addEventListener('click', handleOpenProfilesBatch);
+  document.getElementById('btn-start-monitoring-batch').addEventListener('click', handleStartMonitoringBatch);
+  document.getElementById('btn-stop-monitoring-batch').addEventListener('click', handleStopMonitoringBatch);
+  document.getElementById('btn-close-profiles-batch').addEventListener('click', handleCloseProfilesBatch);
 
   // Table controls
   searchInput.addEventListener('input', handleSearch);
@@ -89,8 +90,13 @@ function setupEventListeners() {
 // IPC Listeners
 function setupIPCListeners() {
   window.electronAPI.onWorkerLog((data) => {
+    // Hiển thị logs trong log panel nếu đang xem profile đó
     if (data.profileId === currentLogProfileId) {
       addLogEntry(data.log);
+    }
+    // Hiển thị logs trong monitoring panel nếu đang monitoring profile đó
+    if (data.profileId === currentMonitoringProfileId) {
+      addMonitoringLogEntry(data.log);
     }
     // Update table if needed
     refreshProfiles();
@@ -606,55 +612,164 @@ async function stopWorker(profileId) {
   }
 }
 
-async function handleStartWorkers() {
+// Mở nhiều profiles hàng loạt
+async function handleOpenProfilesBatch() {
   if (selectedProfiles.size === 0) {
     showNotification('Vui lòng chọn ít nhất một profile', 'warning');
     return;
   }
 
   const profileIds = Array.from(selectedProfiles);
-  showNotification(`Đang mở ${profileIds.length} profile(s) trong Genlogin và bắt đầu theo dõi...`, 'info');
+  showNotification(`Đang mở ${profileIds.length} profile(s)...`, 'info');
   
   let success = 0;
   let failed = 0;
 
   for (const profileId of profileIds) {
     try {
-      const result = await window.electronAPI.startWorker(profileId);
+      const result = await window.electronAPI.openProfileTiktok(profileId);
       if (result.success) {
         success++;
       } else {
         failed++;
-        console.error(`Failed to start ${profileId}:`, result.error);
+        console.error(`Failed to open ${profileId}:`, result.error);
+      }
+      // Delay nhỏ giữa các profile để tránh quá tải
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (error) {
+      failed++;
+      console.error(`Error opening ${profileId}:`, error);
+    }
+  }
+
+  if (success > 0) {
+    showNotification(`✅ Đã mở ${success} profile(s)${failed > 0 ? `, ${failed} thất bại` : ''}`, 'success');
+  } else {
+    showNotification(`❌ Không thể mở profiles. Vui lòng kiểm tra Genlogin đã chạy chưa.`, 'error');
+  }
+  refreshProfiles();
+}
+
+// Bắt đầu theo dõi nhiều profiles hàng loạt
+async function handleStartMonitoringBatch() {
+  if (selectedProfiles.size === 0) {
+    showNotification('Vui lòng chọn ít nhất một profile', 'warning');
+    return;
+  }
+
+  const profileIds = Array.from(selectedProfiles);
+  showNotification(`Đang bắt đầu theo dõi ${profileIds.length} profile(s)...`, 'info');
+  
+  // Chuyển sang trang System Logs để xem logs của tất cả profiles
+  switchPage('logs');
+  
+  let success = 0;
+  let failed = 0;
+
+  for (const profileId of profileIds) {
+    try {
+      const result = await window.electronAPI.startMonitoring(profileId);
+      if (result.success) {
+        success++;
+      } else {
+        failed++;
+        console.error(`Failed to start monitoring ${profileId}:`, result.error);
       }
       // Delay nhỏ giữa các profile để tránh quá tải
       await new Promise(r => setTimeout(r, 500));
     } catch (error) {
       failed++;
-      console.error(`Error starting ${profileId}:`, error);
+      console.error(`Error starting monitoring ${profileId}:`, error);
     }
   }
 
   if (success > 0) {
-    showNotification(`✅ Đã mở và bắt đầu theo dõi ${success} profile(s)${failed > 0 ? `, ${failed} thất bại` : ''}`, 'success');
+    showNotification(`✅ Đã bắt đầu theo dõi ${success} profile(s)${failed > 0 ? `, ${failed} thất bại` : ''}. Xem logs trong System Logs.`, 'success');
   } else {
-    showNotification(`❌ Không thể bắt đầu theo dõi. Vui lòng kiểm tra Genlogin đã chạy chưa.`, 'error');
+    showNotification(`❌ Không thể bắt đầu theo dõi. Vui lòng mở profile trước.`, 'error');
   }
   refreshProfiles();
 }
 
-async function handleStopAll() {
-  if (!confirm('Stop all running workers?')) return;
-
-  try {
-    const result = await window.electronAPI.stopAllWorkers();
-    if (result.success) {
-      showNotification('All workers stopped', 'success');
-      refreshProfiles();
-    }
-  } catch (error) {
-    showNotification(`Error: ${error.message}`, 'error');
+// Dừng theo dõi nhiều profiles hàng loạt
+async function handleStopMonitoringBatch() {
+  if (selectedProfiles.size === 0) {
+    showNotification('Vui lòng chọn ít nhất một profile', 'warning');
+    return;
   }
+
+  if (!confirm(`Bạn có chắc muốn dừng theo dõi ${selectedProfiles.size} profile(s)?`)) return;
+
+  const profileIds = Array.from(selectedProfiles);
+  showNotification(`Đang dừng theo dõi ${profileIds.length} profile(s)...`, 'info');
+  
+  let success = 0;
+  let failed = 0;
+
+  for (const profileId of profileIds) {
+    try {
+      // Dừng worker monitoring (stop-monitoring sẽ dừng worker và giữ profile mở)
+      const result = await window.electronAPI.stopMonitoring(profileId);
+      if (result.success) {
+        success++;
+      } else {
+        failed++;
+        console.error(`Failed to stop monitoring ${profileId}:`, result.error);
+      }
+      // Delay nhỏ giữa các profile
+      await new Promise(r => setTimeout(r, 300));
+    } catch (error) {
+      failed++;
+      console.error(`Error stopping monitoring ${profileId}:`, error);
+    }
+  }
+
+  if (success > 0) {
+    showNotification(`✅ Đã dừng theo dõi ${success} profile(s)${failed > 0 ? `, ${failed} thất bại` : ''}`, 'success');
+  } else {
+    showNotification(`❌ Không thể dừng theo dõi.`, 'error');
+  }
+  refreshProfiles();
+}
+
+// Đóng nhiều profiles hàng loạt
+async function handleCloseProfilesBatch() {
+  if (selectedProfiles.size === 0) {
+    showNotification('Vui lòng chọn ít nhất một profile', 'warning');
+    return;
+  }
+
+  if (!confirm(`Bạn có chắc muốn đóng ${selectedProfiles.size} profile(s)?`)) return;
+
+  const profileIds = Array.from(selectedProfiles);
+  showNotification(`Đang đóng ${profileIds.length} profile(s)...`, 'info');
+  
+  let success = 0;
+  let failed = 0;
+
+  for (const profileId of profileIds) {
+    try {
+      const result = await window.electronAPI.closeProfile(profileId);
+      if (result.success) {
+        success++;
+      } else {
+        failed++;
+        console.error(`Failed to close ${profileId}:`, result.error);
+      }
+      // Delay nhỏ giữa các profile
+      await new Promise(r => setTimeout(r, 500));
+    } catch (error) {
+      failed++;
+      console.error(`Error closing ${profileId}:`, error);
+    }
+  }
+
+  if (success > 0) {
+    showNotification(`✅ Đã đóng ${success} profile(s)${failed > 0 ? `, ${failed} thất bại` : ''}`, 'success');
+  } else {
+    showNotification(`❌ Không thể đóng profiles.`, 'error');
+  }
+  refreshProfiles();
 }
 
 // Profile Details
@@ -865,30 +980,6 @@ async function showAnalytics() {
 }
 
 // Batch Open Profiles
-async function handleOpenProfilesBatch() {
-  if (selectedProfiles.size === 0) {
-    showNotification('Please select at least one profile', 'warning');
-    return;
-  }
-
-  const profileIds = Array.from(selectedProfiles);
-  showModal('batch-open-modal');
-  
-  const progressEl = document.getElementById('batch-open-progress');
-  progressEl.innerHTML = '<div class="loading-line"></div><p>Opening profiles...</p>';
-
-  const results = await window.electronAPI.openProfilesBatch(profileIds);
-  
-  progressEl.innerHTML = results.map(r => `
-    <div class="batch-result ${r.success ? 'success' : 'error'}">
-      <strong>${r.profileId}</strong>: ${r.success ? '✅ Opened' : '❌ ' + (r.error || 'Failed')}
-    </div>
-  `).join('');
-
-  setTimeout(() => {
-    closeModal();
-  }, 3000);
-}
 
 // Utility Functions
 async function refreshProfiles() {
@@ -993,6 +1084,10 @@ async function startMonitoringProfile(profileId) {
     const result = await window.electronAPI.startMonitoring(profileId);
     if (result.success) {
       showNotification(`✅ Đã bắt đầu theo dõi kênh YouTube và upload tự động 24/7 cho profile ${profileId}`, 'success');
+      
+      // Tự động mở monitoring panel để xem logs
+      openMonitoringPanel(profileId);
+      
       refreshProfiles();
       // Đóng drawer sau khi start
       setTimeout(() => {
@@ -1003,6 +1098,27 @@ async function startMonitoringProfile(profileId) {
     }
   } catch (error) {
     showNotification(`❌ Lỗi: ${error.message}`, 'error');
+  }
+}
+
+// Mở monitoring panel để xem logs real-time
+function openMonitoringPanel(profileId) {
+  currentMonitoringProfileId = profileId;
+  const panel = document.getElementById('monitoring-panel');
+  const profileIdEl = document.getElementById('monitoring-profile-id');
+  
+  if (profileIdEl) {
+    profileIdEl.textContent = profileId;
+  }
+  
+  // Clear logs cũ
+  const logContent = document.getElementById('monitoring-log-content');
+  if (logContent) {
+    logContent.innerHTML = '';
+  }
+  
+  if (panel) {
+    panel.classList.add('open');
   }
 }
 
@@ -1095,6 +1211,7 @@ window.openProfileInGenlogin = openProfileInGenlogin;
 window.startMonitoringProfile = startMonitoringProfile;
 window.stopMonitoringProfile = stopMonitoringProfile;
 window.closeProfile = closeProfile;
+window.openMonitoringPanel = openMonitoringPanel;
 window.closeMonitoringPanel = closeMonitoringPanel;
 window.clearMonitoringLogs = clearMonitoringLogs;
 
