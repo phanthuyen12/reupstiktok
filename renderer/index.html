@@ -32,9 +32,13 @@
         </a>
         <a href="#" class="nav-item" data-page="logs">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
           </svg>
-          <span class="nav-tooltip">Worker Logs</span>
+          <span class="nav-tooltip">System Logs</span>
         </a>
         <a href="#" class="nav-item" data-page="settings">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -56,9 +60,11 @@
 
     <!-- Main Content -->
     <main class="main-content">
-      <!-- Header -->
-      <header class="header">
-        <h1 class="page-title">Profiles Manager</h1>
+      <!-- Dashboard Page -->
+      <div class="page-content" id="page-dashboard">
+        <!-- Header -->
+        <header class="header">
+          <h1 class="page-title">Profiles Manager</h1>
         <div class="header-stats">
           <div class="stat-item">
             <span class="stat-label">Running:</span>
@@ -167,6 +173,76 @@
             <button class="pagination-btn" id="prev-page" disabled>Previous</button>
             <span class="pagination-page" id="current-page">1</span>
             <button class="pagination-btn" id="next-page" disabled>Next</button>
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <!-- Logs Page -->
+      <div class="page-content" id="page-logs" style="display: none;">
+        <header class="header">
+          <h1 class="page-title">📋 System Logs</h1>
+          <div class="header-stats">
+            <div class="stat-item">
+              <span class="stat-label">Total Logs:</span>
+              <span class="stat-value" id="total-logs-count">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Auto-scroll:</span>
+              <label class="switch">
+                <input type="checkbox" id="auto-scroll-logs" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+        </header>
+
+        <div class="action-bar">
+          <button class="btn btn-primary" id="btn-clear-all-logs">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            Clear All Logs
+          </button>
+          <button class="btn btn-secondary" id="btn-export-logs">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Export Logs
+          </button>
+          <button class="btn btn-secondary" id="btn-filter-logs">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            Filter
+          </button>
+        </div>
+
+        <div class="log-page-container">
+          <div class="log-filters" id="log-filters" style="display: none;">
+            <select id="log-level-filter">
+              <option value="all">All Levels</option>
+              <option value="info">Info</option>
+              <option value="success">Success</option>
+              <option value="warning">Warning</option>
+              <option value="error">Error</option>
+            </select>
+            <select id="log-source-filter">
+              <option value="all">All Sources</option>
+              <option value="system">System</option>
+              <option value="worker">Worker</option>
+              <option value="profile">Profile</option>
+              <option value="genlogin">Genlogin</option>
+            </select>
+            <input type="text" id="log-search" placeholder="Search logs...">
+          </div>
+          <div class="log-viewer" id="system-log-viewer">
+            <div class="log-content" id="system-log-content">
+              <!-- All logs will be populated here -->
+            </div>
           </div>
         </div>
       </div>

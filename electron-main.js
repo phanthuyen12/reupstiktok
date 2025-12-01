@@ -7,7 +7,33 @@ const puppeteer = require('puppeteer-core');
 let mainWindow;
 const workers = new Map(); // profileId -> { worker, status, logs, stats }
 const profiles = [];
-const profileBrowsers = new Map(); // profileId -> { browser, page, logInterval }
+const profileBrowsers = new Map(); // profileId -> { browser, page, wsEndpoint, logInterval, ready }
+const systemLogs = []; // Tất cả logs của hệ thống
+
+// Hàm helper để log tất cả hành động
+function logSystem(message, level = 'info', source = 'system') {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    message,
+    level,
+    source
+  };
+  
+  systemLogs.push(logEntry);
+  
+  // Giới hạn logs để tránh memory leak
+  if (systemLogs.length > 10000) {
+    systemLogs.splice(0, 5000);
+  }
+  
+  // Gửi log đến renderer
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('system-log', logEntry);
+  }
+  
+  // Console log cho debugging
+  console.log(`[${level.toUpperCase()}] [${source}] ${message}`);
+}
 
 // Tạo cửa sổ chính
 function createWindow() {
@@ -69,8 +95,10 @@ app.on('window-all-closed', () => {
 // Load profiles từ file
 ipcMain.handle('load-profiles', async () => {
   try {
+    logSystem('Đang load profiles từ file...', 'info', 'system');
     const profilesPath = path.join(__dirname, 'profiles.txt');
     if (!fs.existsSync(profilesPath)) {
+      logSystem('File profiles.txt không tồn tại', 'error', 'system');
       return { success: false, error: 'File profiles.txt không tồn tại' };
     }
 
@@ -95,8 +123,10 @@ ipcMain.handle('load-profiles', async () => {
       profiles.push({ profileId, apiKey, channels });
     }
 
+    logSystem(`Đã load ${profiles.length} profiles thành công`, 'success', 'system');
     return { success: true, profiles };
   } catch (error) {
+    logSystem(`Lỗi khi load profiles: ${error.message}`, 'error', 'system');
     return { success: false, error: error.message };
   }
 });
@@ -158,8 +188,10 @@ ipcMain.handle('get-profiles', () => {
 
 // Start worker cho profile
 ipcMain.handle('start-worker', async (event, profileId) => {
+  logSystem(`Bắt đầu start worker cho profile ${profileId}`, 'info', 'worker');
   const profile = profiles.find(p => p.profileId === profileId);
   if (!profile) {
+    logSystem(`Profile ${profileId} không tồn tại`, 'error', 'worker');
     return { success: false, error: 'Profile không tồn tại' };
   }
 
@@ -254,6 +286,9 @@ ipcMain.handle('start-worker', async (event, profileId) => {
       timestamp: new Date().toISOString(),
       message: msg
     });
+    
+    // Gửi vào system logs
+    logSystem(msg, 'info', `worker-${profileId}`);
 
     // Giới hạn logs để tránh memory leak
     if (workerDataObj.logs.length > 1000) {
@@ -322,6 +357,8 @@ ipcMain.handle('start-worker', async (event, profileId) => {
   });
 
   workers.set(profileId, workerDataObj);
+  
+  logSystem(`Worker đã được start thành công cho profile ${profileId}`, 'success', 'worker');
 
   return { success: true, workerId: worker.threadId };
 });
@@ -377,11 +414,13 @@ ipcMain.handle('open-profile', async (event, profileId) => {
 
 // Mở profile và điều hướng đến TikTok upload, tìm input file (KHÔNG start worker)
 ipcMain.handle('open-profile-tiktok', async (event, profileId) => {
+  logSystem(`Bắt đầu mở profile ${profileId} trong Genlogin`, 'info', 'genlogin');
   const Genlogin = require('./Genlogin');
   const gen = new Genlogin('');
   
   try {
     // Gửi log bắt đầu
+    logSystem(`Đang mở profile ${profileId} trong Genlogin...`, 'info', 'genlogin');
     mainWindow.webContents.send('profile-log', {
       profileId,
       log: {
@@ -527,9 +566,12 @@ ipcMain.handle('open-profile-tiktok', async (event, profileId) => {
 
     // Lưu browser instance và logInterval (chưa start worker)
     profileBrowsers.set(profileId, { browser, page, wsEndpoint, logInterval, ready: true });
+    
+    logSystem(`Profile ${profileId} đã được mở thành công và sẵn sàng upload`, 'success', 'genlogin');
 
     return { success: true, wsEndpoint };
   } catch (error) {
+    logSystem(`Lỗi khi mở profile ${profileId}: ${error.message}`, 'error', 'genlogin');
     mainWindow.webContents.send('profile-log', {
       profileId,
       log: {
@@ -543,8 +585,10 @@ ipcMain.handle('open-profile-tiktok', async (event, profileId) => {
 
 // Bắt đầu theo dõi kênh YouTube và upload (sau khi đã mở profile)
 ipcMain.handle('start-monitoring', async (event, profileId) => {
+  logSystem(`Bắt đầu monitoring cho profile ${profileId}`, 'info', 'worker');
   const profile = profiles.find(p => p.profileId === profileId);
   if (!profile) {
+    logSystem(`Profile ${profileId} không tồn tại`, 'error', 'worker');
     return { success: false, error: 'Profile không tồn tại' };
   }
 
@@ -598,6 +642,9 @@ ipcMain.handle('start-monitoring', async (event, profileId) => {
       timestamp: new Date().toISOString(),
       message: msg
     });
+    
+    // Gửi vào system logs
+    logSystem(msg, 'info', `worker-${profileId}`);
 
     // Giới hạn logs để tránh memory leak
     if (workerDataObj.logs.length > 1000) {
@@ -674,6 +721,8 @@ ipcMain.handle('start-monitoring', async (event, profileId) => {
       message: `🚀 Đã bắt đầu theo dõi kênh YouTube và upload tự động 24/7`
     }
   });
+  
+  logSystem(`Đã bắt đầu monitoring thành công cho profile ${profileId}`, 'success', 'worker');
 
   return { success: true, workerId: worker.threadId };
 });
@@ -755,5 +804,17 @@ ipcMain.handle('get-analytics', () => {
   }
 
   return analytics;
+});
+
+// Lấy tất cả system logs
+ipcMain.handle('get-system-logs', () => {
+  return systemLogs;
+});
+
+// Clear system logs
+ipcMain.handle('clear-system-logs', () => {
+  systemLogs.length = 0;
+  logSystem('Đã xóa tất cả system logs', 'info', 'system');
+  return { success: true };
 });
 

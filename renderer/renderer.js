@@ -8,6 +8,9 @@ let sortColumn = null;
 let sortDirection = 'asc';
 let currentLogProfileId = null;
 let currentMonitoringProfileId = null;
+let currentPageView = 'dashboard';
+let systemLogs = [];
+let autoScrollLogs = true;
 
 // DOM Elements
 const profilesTbody = document.getElementById('profiles-tbody');
@@ -33,10 +36,19 @@ function setupEventListeners() {
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
       e.preventDefault();
+      const page = item.dataset.page;
+      switchPage(page);
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
       item.classList.add('active');
-      // Handle navigation if needed
     });
+  });
+  
+  // Log page buttons
+  document.getElementById('btn-clear-all-logs')?.addEventListener('click', clearAllSystemLogs);
+  document.getElementById('btn-export-logs')?.addEventListener('click', exportSystemLogs);
+  document.getElementById('btn-filter-logs')?.addEventListener('click', toggleLogFilters);
+  document.getElementById('auto-scroll-logs')?.addEventListener('change', (e) => {
+    autoScrollLogs = e.target.checked;
   });
 
   // Action buttons
@@ -115,7 +127,153 @@ function setupIPCListeners() {
   window.electronAPI.onProfileNotification((data) => {
     showNotification(data.message, data.type || 'success');
   });
+
+  // System logs
+  window.electronAPI.onSystemLog((logEntry) => {
+    addSystemLogEntry(logEntry);
+  });
 }
+
+// Navigation
+function switchPage(page) {
+  currentPageView = page;
+  document.querySelectorAll('.page-content').forEach(p => p.style.display = 'none');
+  
+  if (page === 'dashboard') {
+    document.getElementById('page-dashboard').style.display = 'flex';
+  } else if (page === 'logs') {
+    document.getElementById('page-logs').style.display = 'flex';
+    loadSystemLogs();
+  }
+}
+
+// System Logs Functions
+async function loadSystemLogs() {
+  try {
+    const logs = await window.electronAPI.getSystemLogs();
+    systemLogs = logs;
+    renderSystemLogs();
+  } catch (error) {
+    console.error('Error loading system logs:', error);
+  }
+}
+
+function renderSystemLogs() {
+  const logContent = document.getElementById('system-log-content');
+  if (!logContent) return;
+  
+  const levelFilter = document.getElementById('log-level-filter')?.value || 'all';
+  const sourceFilter = document.getElementById('log-source-filter')?.value || 'all';
+  const searchText = document.getElementById('log-search')?.value.toLowerCase() || '';
+  
+  let filteredLogs = systemLogs;
+  
+  if (levelFilter !== 'all') {
+    filteredLogs = filteredLogs.filter(log => log.level === levelFilter);
+  }
+  
+  if (sourceFilter !== 'all') {
+    filteredLogs = filteredLogs.filter(log => log.source.includes(sourceFilter));
+  }
+  
+  if (searchText) {
+    filteredLogs = filteredLogs.filter(log => 
+      log.message.toLowerCase().includes(searchText)
+    );
+  }
+  
+  logContent.innerHTML = filteredLogs.map(log => formatSystemLogEntry(log)).join('');
+  
+  document.getElementById('total-logs-count').textContent = filteredLogs.length;
+  
+  if (autoScrollLogs) {
+    logContent.scrollTop = logContent.scrollHeight;
+  }
+}
+
+function formatSystemLogEntry(log) {
+  const time = new Date(log.timestamp).toLocaleTimeString();
+  const date = new Date(log.timestamp).toLocaleDateString();
+  const levelClass = log.level || 'info';
+  const source = log.source || 'system';
+  
+  return `
+    <div class="log-entry-system ${levelClass}">
+      <span class="log-timestamp">[${date} ${time}]</span>
+      <span class="log-source">[${source}]</span>
+      <span class="log-message">${escapeHtml(log.message)}</span>
+    </div>
+  `;
+}
+
+function addSystemLogEntry(logEntry) {
+  systemLogs.push(logEntry);
+  
+  // Giới hạn logs để tránh memory leak
+  if (systemLogs.length > 10000) {
+    systemLogs.splice(0, 5000);
+  }
+  
+  if (currentPageView === 'logs') {
+    renderSystemLogs();
+  }
+}
+
+async function clearAllSystemLogs() {
+  if (!confirm('Bạn có chắc muốn xóa tất cả logs?')) return;
+  
+  try {
+    await window.electronAPI.clearSystemLogs();
+    systemLogs = [];
+    renderSystemLogs();
+    showNotification('Đã xóa tất cả logs', 'success');
+  } catch (error) {
+    showNotification(`Lỗi: ${error.message}`, 'error');
+  }
+}
+
+function exportSystemLogs() {
+  const logsText = systemLogs.map(log => {
+    const time = new Date(log.timestamp).toISOString();
+    return `[${time}] [${log.level}] [${log.source}] ${log.message}`;
+  }).join('\n');
+  
+  const blob = new Blob([logsText], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `system-logs-${new Date().toISOString().split('T')[0]}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+  
+  showNotification('Đã export logs', 'success');
+}
+
+function toggleLogFilters() {
+  const filters = document.getElementById('log-filters');
+  if (filters) {
+    filters.style.display = filters.style.display === 'none' ? 'flex' : 'none';
+  }
+}
+
+// Filter listeners
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const levelFilter = document.getElementById('log-level-filter');
+    const sourceFilter = document.getElementById('log-source-filter');
+    const searchInput = document.getElementById('log-search');
+    
+    if (levelFilter) {
+      levelFilter.addEventListener('change', renderSystemLogs);
+    }
+    if (sourceFilter) {
+      sourceFilter.addEventListener('change', renderSystemLogs);
+    }
+    if (searchInput) {
+      searchInput.addEventListener('input', renderSystemLogs);
+    }
+  }, 100);
+});
 
 // Load Profiles
 async function loadProfiles() {

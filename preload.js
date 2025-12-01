@@ -47,6 +47,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Analytics
   getAnalytics: () => ipcRenderer.invoke('get-analytics'),
 
+  // System Logs
+  getSystemLogs: () => ipcRenderer.invoke('get-system-logs'),
+  clearSystemLogs: () => ipcRenderer.invoke('clear-system-logs'),
+  onSystemLog: (callback) => {
+    ipcRenderer.on('system-log', (event, data) => callback(data));
+  },
+
   // Remove listeners
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
 });
