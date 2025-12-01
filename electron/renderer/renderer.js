@@ -8,6 +8,7 @@ const profilesList = document.getElementById('profilesList');
 const logStream = document.getElementById('logStream');
 const uploadLog = document.getElementById('uploadLog');
 const logTabs = document.querySelectorAll('.log-tab');
+const profileFilterTabs = document.querySelectorAll('.profile-filter-tab');
 const toggleAll = document.getElementById('toggleAll');
 const overlay = document.getElementById('globalOverlay');
 const loadingMessage = document.getElementById('loadingMessage');
@@ -20,8 +21,18 @@ const state = {
   workerState: new Map(),
   selected: new Set(),
   uploads: [],
-  mode: 'edit'
+  mode: 'edit',
+  profileFilter: 'all'
 };
+
+function normalizeWorkerEntries(entries = []) {
+  return entries.map(item => ({
+    profileId: item.profileId,
+    running: Boolean(item.running),
+    mode: item.mode || null,
+    status: item.status || (item.running ? 'running' : 'stopped')
+  }));
+}
 
 function formatChannels(channels) {
   if (!channels.length) return 'Không có channel nào';
@@ -51,11 +62,42 @@ function setLoading(isLoading, message = 'Đang xử lý...') {
   }
 }
 
+function getProfileStatus(profileId) {
+  const workerMeta = state.workerState.get(profileId);
+  if (workerMeta?.status) {
+    return workerMeta.status;
+  }
+  return workerMeta?.running ? 'running' : 'stopped';
+}
+
+function filterProfilesByTab(list) {
+  return list.filter(profile => {
+    const status = getProfileStatus(profile.profileId);
+    switch (state.profileFilter) {
+      case 'running':
+        return status === 'running';
+      case 'stopped':
+        return status === 'stopped';
+      case 'error':
+        return status === 'error';
+      default:
+        return true;
+    }
+  });
+}
+
 function renderProfiles() {
   profilesList.innerHTML = '';
+  const displayProfiles = filterProfilesByTab(state.profiles);
   if (!state.profiles.length) {
     profilesList.innerHTML =
       '<div class="profiles-empty">Hãy chọn file profiles.txt để hiển thị danh sách.</div>';
+    return;
+  }
+
+  if (!displayProfiles.length) {
+    profilesList.innerHTML =
+      '<div class="profiles-empty">Không có profile nào phù hợp với bộ lọc hiện tại.</div>';
     return;
   }
 
@@ -74,17 +116,15 @@ function renderProfiles() {
   const body = document.createElement('div');
   body.classList.add('profiles-table__body');
 
-  state.profiles.forEach(profile => {
+  displayProfiles.forEach(profile => {
     const workerMeta = state.workerState.get(profile.profileId) || {};
-    const running = workerMeta.running ?? state.running.has(profile.profileId);
+    const status = getProfileStatus(profile.profileId);
+    const running = status === 'running';
     const selected = state.selected.has(profile.profileId);
     const modeLabel = workerMeta.mode ? formatModeLabel(workerMeta.mode) : 'Chưa chạy';
 
     const row = document.createElement('div');
-    row.classList.add('profiles-table__row');
-    if (running) {
-      row.classList.add('running');
-    }
+    row.className = `profiles-table__row status-${status} ${running ? 'running' : ''}`;
     row.innerHTML = `
       <div>
         <label class="checkbox">
@@ -291,6 +331,23 @@ modeButtons.forEach(btn => {
   });
 });
 
+profileFilterTabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    const filter = tab.dataset.filter;
+    if (!filter || filter === state.profileFilter) return;
+    state.profileFilter = filter;
+    updateProfileFilterTabs();
+    renderProfiles();
+  });
+});
+
+function updateProfileFilterTabs() {
+  profileFilterTabs.forEach(tab => {
+    if (!tab.dataset.filter) return;
+    tab.classList.toggle('active', tab.dataset.filter === state.profileFilter);
+  });
+}
+
 selectFileBtn.addEventListener('click', async () => {
   try {
     setLoading(true, 'Đang đọc file profiles...');
@@ -341,8 +398,9 @@ window.controlApi.onLogMessage(payload => {
 
 window.controlApi.onWorkerState(payload => {
   if (!Array.isArray(payload)) return;
-  state.workerState = new Map(payload.map(p => [p.profileId, p]));
-  state.running = new Set(payload.filter(p => p.running).map(p => p.profileId));
+  const normalized = normalizeWorkerEntries(payload);
+  state.workerState = new Map(normalized.map(p => [p.profileId, p]));
+  state.running = new Set(normalized.filter(p => p.status === 'running').map(p => p.profileId));
   refreshButtons();
   renderProfiles();
 });
@@ -357,15 +415,16 @@ async function bootstrap() {
     state.profiles = session.profiles;
   }
   if (session.workerState) {
-    state.workerState = new Map(session.workerState.map(item => [item.profileId, item]));
-    const runningProfiles = session.workerState.filter(item => item.running).map(item => item.profileId);
-    state.running = new Set(runningProfiles);
+    const normalized = normalizeWorkerEntries(session.workerState);
+    state.workerState = new Map(normalized.map(item => [item.profileId, item]));
+    state.running = new Set(normalized.filter(item => item.status === 'running').map(item => item.profileId));
   } else if (session.running) {
     state.running = new Set(session.running);
   }
   renderProfiles();
   refreshButtons();
   renderUploadHistory();
+  updateProfileFilterTabs();
 }
 
 bootstrap();

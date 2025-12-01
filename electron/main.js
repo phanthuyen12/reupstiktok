@@ -7,7 +7,7 @@ let mainWindow;
 let profilesFilePath = null;
 let loadedProfiles = [];
 let isQuitting = false;
-const workers = new Map(); // profileId -> { worker, mode }
+const workers = new Map(); // profileId -> { worker, mode, status }
 const normalizeMode = (mode = 'edit') => (mode === 'raw' ? 'raw' : 'edit');
 
 function createWindow() {
@@ -70,7 +70,8 @@ function broadcastWorkerState() {
   const state = loadedProfiles.map(profile => ({
     profileId: profile.profileId,
     running: workers.has(profile.profileId),
-    mode: workers.get(profile.profileId)?.mode || null
+    mode: workers.get(profile.profileId)?.mode || null,
+    status: workers.get(profile.profileId)?.status || (workers.has(profile.profileId) ? 'running' : 'stopped')
   }));
   mainWindow.webContents.send('worker-state', state);
 }
@@ -84,13 +85,18 @@ function startWorker(profile, options = {}) {
   const mode = normalizeMode(options.mode);
   const worker = new Worker(workerPath, { workerData: { ...profile, mode } });
 
-  workers.set(profile.profileId, { worker, mode });
+  workers.set(profile.profileId, { worker, mode, status: 'running' });
   logToRenderer(`🚀 Worker started (mode: ${mode})`, profile.profileId);
   broadcastWorkerState();
 
   worker.on('message', msg => logToRenderer(msg, profile.profileId));
   worker.on('error', err => {
     logToRenderer(`❌ Worker error: ${err.message}`, profile.profileId);
+    const info = workers.get(profile.profileId);
+    if (info) {
+      info.status = 'error';
+      broadcastWorkerState();
+    }
   });
   worker.on('exit', code => {
     logToRenderer(`⚠️ Worker exited with code ${code}`, profile.profileId);
@@ -177,7 +183,8 @@ ipcMain.handle('get-session-state', () => {
     workerState: Array.from(workers.entries()).map(([profileId, info]) => ({
       profileId,
       running: true,
-      mode: info.mode
+      mode: info.mode,
+      status: info.status || 'running'
     }))
   };
 });

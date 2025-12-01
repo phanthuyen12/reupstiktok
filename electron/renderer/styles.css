@@ -152,11 +152,47 @@ main {
   box-shadow: 0 0 0 1px rgba(79, 142, 247, 0.3);
 }
 
-.profiles-list {
+.table-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.table-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.table-tab {
+  border: 1px solid #333;
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: transparent;
+  color: #bdbdbd;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: border 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.table-tab.active {
+  background: #4f8ef7;
+  color: #fff;
+  border-color: #4f8ef7;
+  box-shadow: 0 4px 12px rgba(79, 142, 247, 0.2);
+}
+
+.table-responsive {
+  width: 100%;
   border: 1px solid #333;
   border-radius: 12px;
-  overflow: hidden;
   background: #1b1b1b;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.profiles-list {
+  min-width: 720px;
 }
 
 .profiles-empty {
@@ -194,6 +230,7 @@ main {
 .profiles-table__body {
   max-height: 340px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .profiles-table__row {
@@ -214,6 +251,11 @@ main {
 .profiles-table__row.running {
   border-left: 3px solid #39d98a;
   background: linear-gradient(90deg, rgba(57, 217, 138, 0.12), transparent);
+}
+
+.profiles-table__row.error {
+  border-left: 3px solid #ff6666;
+  background: linear-gradient(90deg, rgba(255, 102, 102, 0.12), transparent);
 }
 
 .profile-id {
@@ -307,6 +349,20 @@ button {
   align-items: center;
   gap: 8px;
   color: #bdbdbd;
+}
+
+@media (max-width: 1024px) {
+  .profiles-table__head,
+  .profiles-table__row {
+    grid-template-columns: 50px 160px 1fr 180px 130px;
+    padding: 12px 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .profiles-list {
+    min-width: 600px;
+  }
 }
 
 .checkbox input[type="checkbox"] {
