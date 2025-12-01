@@ -40,18 +40,29 @@ async function initBrowser(wsEndpoint) {
 // --- Check video mới trên kênh
 async function checkChannel(channelId) {
     try {
+        parentPort.postMessage(`[${PROFILE_ID}] 📡 Đang gọi YouTube API để lấy thông tin kênh ${channelId}...`);
         const ch = await youtube.channels.list({ part: "contentDetails", id: channelId });
+        
         if (!ch.data.items.length) {
             parentPort.postMessage(`[${PROFILE_ID}] ⚠️ Không tìm thấy kênh YouTube: ${channelId}`);
             return [];
         }
+        
         const uploadsId = ch.data.items[0].contentDetails.relatedPlaylists.uploads;
+        parentPort.postMessage(`[${PROFILE_ID}] 📡 Đang gọi YouTube API để lấy danh sách video từ playlist ${uploadsId}...`);
         const playlist = await youtube.playlistItems.list({ part: "snippet", playlistId: uploadsId, maxResults: 5 });
+        
+        parentPort.postMessage(`[${PROFILE_ID}] 📊 Tìm thấy ${playlist.data.items.length} video gần nhất trong playlist`);
 
         const newVideos = [];
         for (const item of playlist.data.items) {
             const vid = item.snippet.resourceId.videoId;
             const published = new Date(item.snippet.publishedAt);
+            const publishedTime = published.toLocaleString('vi-VN');
+            const startTimeStr = startTime.toLocaleString('vi-VN');
+            
+            parentPort.postMessage(`[${PROFILE_ID}] 📹 Video: "${item.snippet.title}" - Published: ${publishedTime} (Start time: ${startTimeStr})`);
+            
             if (published > startTime && !last_video_ids.has(vid)) {
                 last_video_ids.add(vid);
                 newVideos.push({
@@ -60,11 +71,19 @@ async function checkChannel(channelId) {
                     url: `https://www.youtube.com/watch?v=${vid}`,
                     channelId,
                 });
+                parentPort.postMessage(`[${PROFILE_ID}] ✅ Video mới được phát hiện: "${item.snippet.title}"`);
+            } else if (last_video_ids.has(vid)) {
+                parentPort.postMessage(`[${PROFILE_ID}] ⏭️ Video "${item.snippet.title}" đã được xử lý trước đó`);
+            } else {
+                parentPort.postMessage(`[${PROFILE_ID}] ⏭️ Video "${item.snippet.title}" được publish trước khi bắt đầu monitoring`);
             }
         }
+        
+        parentPort.postMessage(`[${PROFILE_ID}] 📊 Kết quả: ${newVideos.length} video mới cần xử lý`);
         return newVideos;
     } catch (err) {
         parentPort.postMessage(`❌ [${PROFILE_ID}] ERROR khi kiểm tra kênh ${channelId}: ${err.message}`);
+        parentPort.postMessage(`❌ [${PROFILE_ID}] Stack trace: ${err.stack}`);
         return [];
     }
 }
@@ -131,25 +150,50 @@ async function uploadVideo(page, input, filePath) {
 
 // --- Main loop 24/7
 async function main() {
+    // Kiểm tra API key và channels
+    if (!API_KEY) {
+        parentPort.postMessage(`❌ [${PROFILE_ID}] ERROR: API Key không được cung cấp!`);
+        return;
+    }
+    
+    if (!CHANNEL_IDS || CHANNEL_IDS.length === 0) {
+        parentPort.postMessage(`❌ [${PROFILE_ID}] ERROR: Không có kênh YouTube nào để theo dõi!`);
+        return;
+    }
+    
+    parentPort.postMessage(`[${PROFILE_ID}] 🔧 Cấu hình monitoring:`);
+    parentPort.postMessage(`[${PROFILE_ID}]   - API Key: ${API_KEY.substring(0, 10)}...${API_KEY.substring(API_KEY.length - 5)}`);
+    parentPort.postMessage(`[${PROFILE_ID}]   - Số kênh: ${CHANNEL_IDS.length}`);
+    parentPort.postMessage(`[${PROFILE_ID}]   - Danh sách kênh: ${CHANNEL_IDS.join(', ')}`);
+    
     // Lấy wsEndpoint từ workerData (được truyền từ main process)
     const wsEndpoint = workerData.wsEndpoint;
+    if (!wsEndpoint) {
+        parentPort.postMessage(`❌ [${PROFILE_ID}] ERROR: wsEndpoint không được cung cấp!`);
+        return;
+    }
+    
+    parentPort.postMessage(`[${PROFILE_ID}] 🔗 Đang kết nối với browser qua wsEndpoint...`);
     let { page, input } = await initBrowser(wsEndpoint);
+    parentPort.postMessage(`[${PROFILE_ID}] ✅ Đã kết nối browser và sẵn sàng upload!`);
 
     parentPort.postMessage(`[${PROFILE_ID}] ✅ Đã khởi động monitoring. Đang theo dõi ${CHANNEL_IDS.length} kênh YouTube...`);
+    parentPort.postMessage(`[${PROFILE_ID}] ⏰ Bắt đầu kiểm tra video mới từ ${new Date().toLocaleString('vi-VN')}...`);
     
     let checkCount = 0;
     while (true) {
         checkCount++;
-        parentPort.postMessage(`[${PROFILE_ID}] 🔄 Đang kiểm tra kênh YouTube (lần ${checkCount})...`);
+        const checkTime = new Date().toLocaleTimeString('vi-VN');
+        parentPort.postMessage(`[${PROFILE_ID}] 🔄 [${checkTime}] Đang kiểm tra kênh YouTube (lần ${checkCount})...`);
         
         for (const chId of CHANNEL_IDS) {
-            parentPort.postMessage(`[${PROFILE_ID}] 🔍 Đang kiểm tra kênh: ${chId}`);
+            parentPort.postMessage(`[${PROFILE_ID}] 🔍 [${checkTime}] Đang kiểm tra kênh: ${chId}`);
             const videos = await checkChannel(chId);
             
             if (videos.length > 0) {
-                parentPort.postMessage(`[${PROFILE_ID}] 🎉 Tìm thấy ${videos.length} video mới từ kênh ${chId}`);
+                parentPort.postMessage(`[${PROFILE_ID}] 🎉 [${checkTime}] Tìm thấy ${videos.length} video mới từ kênh ${chId}`);
             } else {
-                parentPort.postMessage(`[${PROFILE_ID}] ℹ️ Không có video mới từ kênh ${chId}`);
+                parentPort.postMessage(`[${PROFILE_ID}] ℹ️ [${checkTime}] Không có video mới từ kênh ${chId}`);
             }
 
             for (const v of videos) {

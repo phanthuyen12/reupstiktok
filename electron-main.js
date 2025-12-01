@@ -705,9 +705,16 @@ ipcMain.handle('start-monitoring', async (event, profileId) => {
 
   // Start worker với wsEndpoint đã có sẵn
   const wsEndpoint = browserData.wsEndpoint;
+  
+  // Log thông tin profile trước khi start worker
+  logSystem(`Bắt đầu worker cho profile ${profileId} với API Key: ${profile.apiKey ? profile.apiKey.substring(0, 10) + '...' + profile.apiKey.substring(profile.apiKey.length - 5) : 'KHÔNG CÓ'}`, 'info', 'worker');
+  logSystem(`Profile ${profileId} có ${profile.channels ? profile.channels.length : 0} kênh YouTube: ${profile.channels ? profile.channels.join(', ') : 'KHÔNG CÓ'}`, 'info', 'worker');
+  
   const worker = new Worker(path.join(__dirname, 'worker.js'), {
     workerData: {
-      ...profile,
+      profileId: profile.profileId,
+      apiKey: profile.apiKey,
+      channels: profile.channels || [],
       wsEndpoint: wsEndpoint
     }
   });
