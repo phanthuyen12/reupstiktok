@@ -1,4 +1,11 @@
 {
+  "name": "reupstiktok",
+  "version": "1.0.0",
+  "description": "TikTok auto uploader with Electron control panel",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
     "axios": "^1.13.2",
@@ -9,5 +16,8 @@
     "youtubei.js": "^16.0.1",
     "yt-dlp-exec": "^1.0.2",
     "ytdl-core": "^4.11.5"
+  },
+  "devDependencies": {
+    "electron": "^32.1.2"
   }
 }
