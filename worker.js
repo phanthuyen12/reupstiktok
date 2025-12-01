@@ -65,34 +65,51 @@ async function checkChannel(channelId) {
     }
 }
 
-// --- Upload video
+// --- Upload video (giống testdow.js)
 async function uploadVideo(page, input, filePath) {
     await input.uploadFile(filePath);
+    parentPort.postMessage(`[${PROFILE_ID}] 📤 Upload video xong`);
 
     const btnSelector = 'button[data-e2e="post_video_button"]';
-    await page.waitForFunction(
-        selector => {
-            const el = document.querySelector(selector);
-            if (!el) return false;
-            const style = window.getComputedStyle(el);
-            const visible = style.display !== 'none' && style.visibility !== 'hidden' && el.offsetHeight > 0;
-            const enabled = el.getAttribute('data-loading') === 'false' && el.getAttribute('aria-disabled') === 'false';
-            return visible && enabled;
-        },
-        { polling: 500, timeout: 30000 },
-        btnSelector
-    );
+    let success = false;
 
-    const el = await page.$(btnSelector);
-    await el.click();
+    try {
+        // Chờ nút xuất hiện và enabled
+        const btn = await page.waitForFunction(
+            selector => {
+                const el = document.querySelector(selector);
+                if (!el) return false;
+                // check visible & enabled
+                const style = window.getComputedStyle(el);
+                const visible = style && style.display !== 'none' && style.visibility !== 'hidden' && el.offsetHeight > 0;
+                const enabled = el.getAttribute('data-loading') === 'false' && el.getAttribute('aria-disabled') === 'false';
+                return visible && enabled;
+            },
+            { polling: 500, timeout: 30000 },
+            btnSelector
+        );
 
-    // Chờ redirect sang content page
-    const startRedirect = performance.now();
-    await page.waitForFunction(() => window.location.href.includes("tiktokstudio/content"), { timeout: 15000 });
-    const endRedirect = performance.now();
+        if (btn) {
+            const el = await page.$(btnSelector);
+            await el.evaluate(el => el.scrollIntoView({ block: "center" }));
+            await el.click();
 
-    const redirectTime = ((endRedirect - startRedirect) / 1000).toFixed(2);
-    parentPort.postMessage(`[${PROFILE_ID}] ⏱ Thời gian redirect sau click Post: ${redirectTime}s`);
+            // Chờ redirect sang content page
+            const startRedirect = performance.now();
+            await page.waitForFunction(
+                () => window.location.href.includes("tiktokstudio/content"),
+                { timeout: 15000 }
+            );
+            const endRedirect = performance.now();
+
+            success = true;
+            const redirectTime = ((endRedirect - startRedirect) / 1000).toFixed(2);
+            parentPort.postMessage(`[${PROFILE_ID}] ✅ Upload + Post thành công`);
+            parentPort.postMessage(`[${PROFILE_ID}] ⏱ Thời gian redirect sau click Post: ${redirectTime}s`);
+        }
+    } catch (err) {
+        parentPort.postMessage(`[${PROFILE_ID}] ❌ Upload thất bại hoặc nút Post chưa sẵn sàng: ${err.message}`);
+    }
 }
 
 // --- Main loop 24/7

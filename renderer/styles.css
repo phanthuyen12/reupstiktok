@@ -638,6 +638,16 @@ body {
   bottom: 0;
 }
 
+.monitoring-panel {
+  z-index: 200;
+  height: 500px;
+  bottom: -500px;
+}
+
+.monitoring-panel.open {
+  bottom: 0;
+}
+
 .log-panel-header {
   padding: 16px 24px;
   border-bottom: 1px solid var(--border-color);
