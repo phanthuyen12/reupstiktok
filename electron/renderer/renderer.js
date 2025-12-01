@@ -97,7 +97,9 @@ function renderUploadHistory() {
     header.classList.add('upload-entry-header');
     header.innerHTML = `
       <span>${new Date(item.timestamp).toLocaleTimeString()}</span>
-      <span class="tag">Uploaded · [${item.profileId}]</span>
+      <span class="tag">
+        Uploaded · [${item.profileId}]${item.totalTime ? ` · ${item.totalTime}s` : ''}
+      </span>
     `;
 
     const body = document.createElement('div');
@@ -136,6 +138,27 @@ function handleUploadMessage(payload) {
   }
 
   state.uploads.push({ profileId, timestamp, summary, file });
+  renderUploadHistory();
+}
+
+// Bắt log thời gian tổng cho mỗi upload và map vào record gần nhất của profile đó
+function handleTimingMessage(payload) {
+  const { profileId, message } = payload;
+  if (!message.includes('Tổng thời gian')) {
+    return;
+  }
+  // Ví dụ: `[25141883] ⏱ Tổng thời gian từ nhận → download → merge → 65s → upload (đã trừ redirect 1s): 12.34s`
+  const match = message.match(/(\d+\.?\d*)s/);
+  if (!match) return;
+  const totalTime = parseFloat(match[1]);
+
+  // Gán vào upload gần nhất của cùng profile
+  for (let i = state.uploads.length - 1; i >= 0; i--) {
+    if (state.uploads[i].profileId === profileId && state.uploads[i].totalTime == null) {
+      state.uploads[i].totalTime = totalTime;
+      break;
+    }
+  }
   renderUploadHistory();
 }
 
@@ -200,6 +223,7 @@ clearLogsBtn.addEventListener('click', () => {
 window.controlApi.onLogMessage(payload => {
   appendLog(payload);
   handleUploadMessage(payload);
+  handleTimingMessage(payload);
 });
 
 window.controlApi.onWorkerState(payload => {

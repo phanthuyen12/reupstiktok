@@ -49,16 +49,17 @@ header p {
 main {
   padding: 24px 32px 40px;
   display: grid;
-  gap: 24px;
+  gap: 20px;
   grid-template-columns: 1fr;
+  align-items: stretch;
 }
 
 .panel {
   background: #232323;
   border: 1px solid #333;
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.35);
 }
 
 .panel-header {
@@ -84,7 +85,7 @@ main {
 .file-info {
   margin: 16px 0 12px;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: 6px;
   background: #2d2d2d;
   color: #d9d9d9;
   font-size: 0.95rem;
@@ -114,7 +115,7 @@ main {
   align-items: center;
   padding: 14px 16px;
   background: #2a2a2a;
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid transparent;
   transition: border 0.2s ease;
 }
@@ -156,7 +157,7 @@ main {
 #clearLogsBtn {
   padding: 10px 18px;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   font-weight: 600;
   transition: transform 0.15s ease, opacity 0.15s ease;
@@ -213,14 +214,14 @@ button {
   display: inline-flex;
   background: #181818;
   padding: 4px;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 1px solid #333;
   gap: 4px;
 }
 
 .log-tab {
   padding: 6px 14px;
-  border-radius: 999px;
+  border-radius: 4px;
   border: none;
   background: transparent;
   color: #bfbfbf;
@@ -243,7 +244,7 @@ button {
   position: absolute;
   inset: 0;
   background: #111;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 16px;
   overflow-y: auto;
   font-family: "JetBrains Mono", "Fira Code", monospace;
@@ -277,7 +278,7 @@ button {
 /* Upload history styles */
 .upload-entry {
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 6px;
   background: #181818;
   border: 1px solid #2e2e2e;
   margin-bottom: 10px;
@@ -309,9 +310,9 @@ button {
   color: #c2e4ff;
 }
 
-@media (min-width: 1200px) {
+@media (min-width: 900px) {
   main {
-    grid-template-columns: 1fr 0.8fr;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr);
   }
 }
 
