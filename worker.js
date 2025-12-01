@@ -76,11 +76,19 @@ async function uploadVideo(page, input, filePath) {
             throw new Error(`File không tồn tại: ${absolutePath}`);
         }
         
-        await input.uploadFile(absolutePath);
+        // Sử dụng setInputFiles thay vì uploadFile để tránh lỗi
+        await input.setInputFiles(absolutePath);
         parentPort.postMessage(`[${PROFILE_ID}] 📤 Upload video xong`);
     } catch (err) {
-        parentPort.postMessage(`[${PROFILE_ID}] ❌ Lỗi khi upload file: ${err.message}`);
-        throw err;
+        // Nếu setInputFiles không hoạt động, thử uploadFile
+        try {
+            const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+            await input.uploadFile(absolutePath);
+            parentPort.postMessage(`[${PROFILE_ID}] 📤 Upload video xong (fallback)`);
+        } catch (err2) {
+            parentPort.postMessage(`[${PROFILE_ID}] ❌ Lỗi khi upload file: ${err2.message}`);
+            throw err2;
+        }
     }
 
     const btnSelector = 'button[data-e2e="post_video_button"]';
@@ -151,13 +159,17 @@ async function main() {
                     let rawFile;
                     if (link.combined) {
                         rawFile = await downloadVideo(link.combined, "temp/raw.mp4");
+                        // Đảm bảo rawFile là absolute path
+                        if (!path.isAbsolute(rawFile)) {
+                            rawFile = path.resolve(rawFile);
+                        }
                         parentPort.postMessage(`[${PROFILE_ID}] ✅ Download combined xong`);
                     } else if (link.video && link.audio) {
                         const [videoFile, audioFile] = await Promise.all([
                             downloadVideo(link.video, "temp/video.mp4"),
                             downloadVideo(link.audio, "temp/audio.mp4"),
                         ]);
-                        rawFile = "temp/merged.mp4";
+                        rawFile = path.resolve("temp", "merged.mp4");
                         await mergeVideoAudio(videoFile, audioFile, rawFile);
                         parentPort.postMessage(`[${PROFILE_ID}] ✅ Download video + audio & merge xong`);
                     }
