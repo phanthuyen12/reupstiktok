@@ -357,6 +357,14 @@ button {
     grid-template-columns: 50px 160px 1fr 180px 130px;
     padding: 12px 16px;
   }
+
+  .log-panel {
+    min-height: 420px;
+  }
+
+  .log-views {
+    min-height: 300px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -371,9 +379,11 @@ button {
 }
 
 .log-panel {
-  max-height: 420px;
   display: flex;
   flex-direction: column;
+  min-height: 480px;
+  flex: 1 1 auto;
+  height: auto;
 }
 
 .log-tabs {
@@ -405,6 +415,7 @@ button {
   margin-top: 12px;
   position: relative;
   flex: 1;
+  min-height: 360px;
 }
 
 .log-stream {
