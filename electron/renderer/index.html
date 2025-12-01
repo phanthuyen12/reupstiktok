@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ReUp TikTok Control Center</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>ReUp TikTok Control Center</h1>
+        <p>Quản lý các luồng tải TikTok tự động với Electron UI</p>
+      </div>
+      <div class="runtime-actions">
+        <button id="stopAllBtn" class="danger" disabled>Dừng toàn bộ</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Profiles</h2>
+            <p>Chọn file <code>profiles.txt</code> sau đó chọn những profile muốn chạy</p>
+          </div>
+          <button id="selectFileBtn">Chọn file profiles.txt</button>
+        </div>
+        <div class="file-info" id="fileInfo">Chưa có file được chọn</div>
+
+        <div class="profile-actions">
+          <div class="left">
+            <button id="startBtn" class="primary" disabled>Chạy các profiles đã chọn</button>
+            <button id="stopBtn" disabled>Dừng profiles đã chọn</button>
+          </div>
+          <div class="right">
+            <label class="checkbox">
+              <input type="checkbox" id="toggleAll" />
+              <span>Chọn tất cả</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="profiles-list" id="profilesList"></div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="panel-header">
+          <h2>Logs realtime</h2>
+          <button id="clearLogsBtn">Xoá log</button>
+        </div>
+        <div id="logStream" class="log-stream"></div>
+      </section>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
+
