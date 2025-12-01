@@ -16,6 +16,8 @@ const PROFILE_ID = workerData.profileId;
 const youtube = google.youtube({ version: "v3", auth: API_KEY });
 const last_video_ids = new Set();
 const startTime = new Date();
+const pendingVideos = [];
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // --- Mở profile 1 lần (wsEndpoint được truyền từ main process)
 async function initBrowser(wsEndpoint) {
@@ -85,6 +87,130 @@ async function checkChannel(channelId) {
         parentPort.postMessage(`❌ [${PROFILE_ID}] ERROR khi kiểm tra kênh ${channelId}: ${err.message}`);
         parentPort.postMessage(`❌ [${PROFILE_ID}] Stack trace: ${err.stack}`);
         return [];
+    }
+}
+
+function enqueueVideos(channelId, videos, checkTime) {
+    for (const video of videos) {
+        pendingVideos.push(video);
+        parentPort.postMessage(
+            `[${PROFILE_ID}] 📥 [${checkTime}] Đã thêm video "${video.title}" từ kênh ${channelId} vào hàng chờ xử lý`
+        );
+    }
+}
+
+async function detectionLoop() {
+    let checkCount = 0;
+    while (true) {
+        checkCount++;
+        const cycleStart = performance.now();
+        const checkTime = new Date().toLocaleTimeString('vi-VN');
+        parentPort.postMessage(`[${PROFILE_ID}] 🔄 [${checkTime}] Đang kiểm tra kênh YouTube (lần ${checkCount})...`);
+
+        const channelResults = await Promise.all(
+            CHANNEL_IDS.map(async (chId) => {
+                parentPort.postMessage(`[${PROFILE_ID}] 🔍 [${checkTime}] Đang kiểm tra kênh: ${chId}`);
+                const videos = await checkChannel(chId);
+                return { channelId: chId, videos };
+            })
+        );
+
+        for (const { channelId, videos } of channelResults) {
+            if (videos.length > 0) {
+                parentPort.postMessage(
+                    `[${PROFILE_ID}] 🎉 [${checkTime}] Tìm thấy ${videos.length} video mới từ kênh ${channelId}`
+                );
+                enqueueVideos(channelId, videos, checkTime);
+            } else {
+                parentPort.postMessage(`[${PROFILE_ID}] ℹ️ [${checkTime}] Không có video mới từ kênh ${channelId}`);
+            }
+        }
+
+        const elapsed = performance.now() - cycleStart;
+        const waitTime = Math.max(0, 1000 - elapsed);
+        if (waitTime > 0) {
+            await sleep(waitTime);
+        }
+    }
+}
+
+async function processQueue(page, initialInput) {
+    let uploadInput = initialInput;
+    while (true) {
+        const job = pendingVideos.shift();
+        if (!job) {
+            await sleep(500);
+            continue;
+        }
+
+        const v = job;
+        const startTotal = performance.now();
+        try {
+            parentPort.postMessage(`[${PROFILE_ID}] 🎬 Nhận video: ${v.title} | ${v.url}`);
+
+            // 1️⃣ Lấy link download
+            const startLink = performance.now();
+            const link = await getDownloadLink(v.url);
+            const endLink = performance.now();
+            parentPort.postMessage(`[${PROFILE_ID}] ⏳ Lấy link xong sau ${(endLink - startLink).toFixed(2)} ms`);
+
+            // 2️⃣ Download / merge
+            const startDownload = performance.now();
+            let rawFile;
+            if (link.combined) {
+                rawFile = await downloadVideo(link.combined, "temp/raw.mp4");
+                if (!path.isAbsolute(rawFile)) {
+                    rawFile = path.resolve(rawFile);
+                }
+                parentPort.postMessage(`[${PROFILE_ID}] ✅ Download combined xong`);
+            } else if (link.video && link.audio) {
+                const [videoFile, audioFile] = await Promise.all([
+                    downloadVideo(link.video, "temp/video.mp4"),
+                    downloadVideo(link.audio, "temp/audio.mp4"),
+                ]);
+                rawFile = path.resolve("temp", "merged.mp4");
+                await mergeVideoAudio(videoFile, audioFile, rawFile);
+                parentPort.postMessage(`[${PROFILE_ID}] ✅ Download video + audio & merge xong`);
+            } else {
+                throw new Error("Không lấy được link download hợp lệ");
+            }
+            const endDownload = performance.now();
+
+            // 3️⃣ Ghép 65s
+            const start65s = performance.now();
+            const outputDir = path.resolve("output");
+            if (!fs.existsSync(outputDir)) {
+                fs.mkdirSync(outputDir, { recursive: true });
+            }
+            const finalFile = path.resolve(outputDir, `video_65s_${Date.now()}.mp4`);
+            await make65sVideo(rawFile, finalFile);
+            const end65s = performance.now();
+            parentPort.postMessage(`[${PROFILE_ID}] ✅ Ghép 65s xong sau ${(end65s - start65s).toFixed(2)} ms`);
+
+            // 4️⃣ Upload video
+            const startUpload = performance.now();
+            if (!fs.existsSync(finalFile)) {
+                throw new Error(`File không tồn tại: ${finalFile}`);
+            }
+            await uploadVideo(page, uploadInput, finalFile);
+            const endUpload = performance.now();
+
+            const endTotal = performance.now();
+            const totalElapsed = ((endTotal - startTotal) / 1000).toFixed(2);
+            const adjustedElapsed = (totalElapsed - 1).toFixed(2);
+            parentPort.postMessage(`[${PROFILE_ID}] ✅ Upload xong: ${v.title} → ${finalFile}`);
+            parentPort.postMessage(
+                `[${PROFILE_ID}] ⏱ Tổng thời gian từ nhận → download → merge → 65s → upload (đã trừ redirect 1s): ${adjustedElapsed}s`
+            );
+            parentPort.postMessage(
+                `[${PROFILE_ID}] Chi tiết thời gian: link ${(endLink - startLink).toFixed(2)}ms | download ${(endDownload - startDownload).toFixed(2)}ms | 65s ${(end65s - start65s).toFixed(2)}ms | upload ${(endUpload - startUpload).toFixed(2)}ms`
+            );
+
+            await page.goto("https://www.tiktok.com/tiktokstudio/upload?from=webapp", { waitUntil: "networkidle2" });
+            uploadInput = await page.waitForSelector('input[type="file"]', { timeout: 15000 });
+        } catch (err) {
+            parentPort.postMessage(`❌ [${PROFILE_ID}] Error: ${err.message}`);
+        }
     }
 }
 
@@ -192,92 +318,11 @@ async function main() {
     process.on('exit', cleanup);
     parentPort.on('close', cleanup);
     
-    let checkCount = 0;
-    while (true) {
-        checkCount++;
-        const checkTime = new Date().toLocaleTimeString('vi-VN');
-        parentPort.postMessage(`[${PROFILE_ID}] 🔄 [${checkTime}] Đang kiểm tra kênh YouTube (lần ${checkCount})...`);
-        
-        for (const chId of CHANNEL_IDS) {
-            parentPort.postMessage(`[${PROFILE_ID}] 🔍 [${checkTime}] Đang kiểm tra kênh: ${chId}`);
-            const videos = await checkChannel(chId);
-            
-            if (videos.length > 0) {
-                parentPort.postMessage(`[${PROFILE_ID}] 🎉 [${checkTime}] Tìm thấy ${videos.length} video mới từ kênh ${chId}`);
-            } else {
-                parentPort.postMessage(`[${PROFILE_ID}] ℹ️ [${checkTime}] Không có video mới từ kênh ${chId}`);
-            }
+    detectionLoop().catch(err => {
+        parentPort.postMessage(`❌ [${PROFILE_ID}] Detection loop lỗi: ${err.message}`);
+    });
 
-            for (const v of videos) {
-                const startTotal = performance.now();
-                try {
-                    parentPort.postMessage(`[${PROFILE_ID}] 🎬 Nhận video: ${v.title} | ${v.url}`);
-
-                    // 1️⃣ Lấy link download
-                    const startLink = performance.now();
-                    const link = await getDownloadLink(v.url);
-                    const endLink = performance.now();
-                    parentPort.postMessage(`[${PROFILE_ID}] ⏳ Lấy link xong sau ${(endLink - startLink).toFixed(2)} ms`);
-
-                    // 2️⃣ Download / merge
-                    const startDownload = performance.now();
-                    let rawFile;
-                    if (link.combined) {
-                        rawFile = await downloadVideo(link.combined, "temp/raw.mp4");
-                        // Đảm bảo rawFile là absolute path
-                        if (!path.isAbsolute(rawFile)) {
-                            rawFile = path.resolve(rawFile);
-                        }
-                        parentPort.postMessage(`[${PROFILE_ID}] ✅ Download combined xong`);
-                    } else if (link.video && link.audio) {
-                        const [videoFile, audioFile] = await Promise.all([
-                            downloadVideo(link.video, "temp/video.mp4"),
-                            downloadVideo(link.audio, "temp/audio.mp4"),
-                        ]);
-                        rawFile = path.resolve("temp", "merged.mp4");
-                        await mergeVideoAudio(videoFile, audioFile, rawFile);
-                        parentPort.postMessage(`[${PROFILE_ID}] ✅ Download video + audio & merge xong`);
-                    }
-                    const endDownload = performance.now();
-
-                    // 3️⃣ Ghép 65s
-                    const start65s = performance.now();
-                    const outputDir = path.resolve("output");
-                    if (!fs.existsSync(outputDir)) {
-                        fs.mkdirSync(outputDir, { recursive: true });
-                    }
-                    const finalFile = path.resolve(outputDir, `video_65s_${Date.now()}.mp4`);
-                    await make65sVideo(rawFile, finalFile);
-                    const end65s = performance.now();
-                    parentPort.postMessage(`[${PROFILE_ID}] ✅ Ghép 65s xong sau ${(end65s - start65s).toFixed(2)} ms`);
-
-                    // 4️⃣ Upload video
-                    const startUpload = performance.now();
-                    // Đảm bảo file tồn tại trước khi upload
-                    if (!fs.existsSync(finalFile)) {
-                        throw new Error(`File không tồn tại: ${finalFile}`);
-                    }
-                    await uploadVideo(page, input, finalFile);
-                    const endUpload = performance.now();
-
-                    const endTotal = performance.now();
-                    const totalElapsed = ((endTotal - startTotal) / 1000).toFixed(2);
-                    const adjustedElapsed = (totalElapsed - 1).toFixed(2); // trừ ~1s redirect
-                    parentPort.postMessage(`[${PROFILE_ID}] ✅ Upload xong: ${v.title} → ${finalFile}`);
-                    parentPort.postMessage(`[${PROFILE_ID}] ⏱ Tổng thời gian từ nhận → download → merge → 65s → upload (đã trừ redirect 1s): ${adjustedElapsed}s`);
-                    parentPort.postMessage(`[${PROFILE_ID}] Chi tiết thời gian: link ${(endLink - startLink).toFixed(2)}ms | download ${(endDownload - startDownload).toFixed(2)}ms | 65s ${(end65s - start65s).toFixed(2)}ms | upload ${(endUpload - startUpload).toFixed(2)}ms`);
-
-                    // 🔁 Quay lại trang upload để nhận video tiếp theo
-                    await page.goto("https://www.tiktok.com/tiktokstudio/upload?from=webapp", { waitUntil: "networkidle2" });
-                    input = await page.waitForSelector('input[type="file"]', { timeout: 15000 });
-
-                } catch (err) {
-                    parentPort.postMessage(`❌ [${PROFILE_ID}] Error: ${err.message}`);
-                }
-            }
-        }
-        await new Promise(r => setTimeout(r, 1000));
-    }
+    await processQueue(page, input);
 }
 
 main();
