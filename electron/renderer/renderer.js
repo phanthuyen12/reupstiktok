@@ -9,19 +9,29 @@ const logStream = document.getElementById('logStream');
 const uploadLog = document.getElementById('uploadLog');
 const logTabs = document.querySelectorAll('.log-tab');
 const toggleAll = document.getElementById('toggleAll');
+const overlay = document.getElementById('globalOverlay');
+const loadingMessage = document.getElementById('loadingMessage');
+const modeButtons = document.querySelectorAll('.mode-btn');
 
 const state = {
   filePath: null,
   profiles: [],
   running: new Set(),
+  workerState: new Map(),
   selected: new Set(),
-  uploads: []
+  uploads: [],
+  mode: 'edit'
 };
 
 function formatChannels(channels) {
   if (!channels.length) return 'Không có channel nào';
   if (channels.length <= 3) return channels.join(', ');
   return `${channels.slice(0, 3).join(', ')} +${channels.length - 3} kênh`;
+}
+
+function formatModeLabel(mode) {
+  if (mode === 'raw') return 'Không edit';
+  return 'Edit videos';
 }
 
 function refreshButtons() {
@@ -31,42 +41,74 @@ function refreshButtons() {
   stopAllBtn.disabled = state.running.size === 0;
 }
 
+function setLoading(isLoading, message = 'Đang xử lý...') {
+  if (!overlay) return;
+  if (isLoading) {
+    if (loadingMessage) loadingMessage.textContent = message;
+    overlay.classList.remove('hidden');
+  } else {
+    overlay.classList.add('hidden');
+  }
+}
+
 function renderProfiles() {
   profilesList.innerHTML = '';
   if (!state.profiles.length) {
     profilesList.innerHTML =
-      '<div class="file-info">Hãy chọn file profiles.txt để hiển thị danh sách.</div>';
+      '<div class="profiles-empty">Hãy chọn file profiles.txt để hiển thị danh sách.</div>';
     return;
   }
 
+  const table = document.createElement('div');
+  table.classList.add('profiles-table');
+  table.innerHTML = `
+    <div class="profiles-table__head">
+      <div>Chọn</div>
+      <div>Profile</div>
+      <div>Kênh theo dõi</div>
+      <div>API Key</div>
+      <div>Trạng thái</div>
+    </div>
+  `;
+
+  const body = document.createElement('div');
+  body.classList.add('profiles-table__body');
+
   state.profiles.forEach(profile => {
-    const card = document.createElement('div');
-    card.classList.add('profile-card');
-    const running = state.running.has(profile.profileId);
+    const workerMeta = state.workerState.get(profile.profileId) || {};
+    const running = workerMeta.running ?? state.running.has(profile.profileId);
+    const selected = state.selected.has(profile.profileId);
+    const modeLabel = workerMeta.mode ? formatModeLabel(workerMeta.mode) : 'Chưa chạy';
+
+    const row = document.createElement('div');
+    row.classList.add('profiles-table__row');
     if (running) {
-      card.classList.add('running');
+      row.classList.add('running');
     }
-
-    const left = document.createElement('div');
-    left.classList.add('profile-info');
-    left.innerHTML = `
-      <h3>${profile.profileId}</h3>
-      <p>API Key: ${profile.apiKey.substring(0, 8)}... | Channels: ${formatChannels(profile.channels)}</p>
+    row.innerHTML = `
+      <div>
+        <label class="checkbox">
+          <input type="checkbox" data-profile="${profile.profileId}" ${selected ? 'checked' : ''}/>
+        </label>
+      </div>
+      <div>
+        <div class="profile-id">${profile.profileId}</div>
+        <div class="profile-meta">
+          <span class="profile-mode-badge">${modeLabel}</span>
+        </div>
+      </div>
+      <div class="profile-channels">${formatChannels(profile.channels)}</div>
+      <div class="profile-api">${profile.apiKey.substring(0, 8)}...${profile.apiKey.slice(-4)}</div>
+      <div class="profile-meta">
+        <span class="status-pill ${running ? 'running' : 'idle'}">${running ? 'Đang chạy' : 'Idle'}</span>
+      </div>
     `;
 
-    const right = document.createElement('div');
-    right.classList.add('profile-meta');
-    right.innerHTML = `
-      <label class="checkbox">
-        <input type="checkbox" data-profile="${profile.profileId}" ${state.selected.has(profile.profileId) ? 'checked' : ''}/>
-      </label>
-      <span class="status-pill ${running ? 'running' : 'idle'}">${running ? 'Đang chạy' : 'Idle'}</span>
-    `;
-
-    card.appendChild(left);
-    card.appendChild(right);
-    profilesList.appendChild(card);
+    body.appendChild(row);
   });
+
+  table.appendChild(body);
+  profilesList.appendChild(table);
 }
 
 function appendLog({ profileId, message, timestamp }) {
@@ -104,9 +146,28 @@ function renderUploadHistory() {
 
     const body = document.createElement('div');
     body.classList.add('upload-entry-body');
+    const timingMeta = [];
+    if (item.mode) {
+      timingMeta.push(`<span>Chế độ: ${formatModeLabel(item.mode)}</span>`);
+    }
+    if (typeof item.totalTime === 'number') {
+      timingMeta.push(`<span>Tổng thời gian: ${item.totalTime.toFixed(2)}s</span>`);
+    }
+
+    const breakdownHtml = item.breakdown
+      ? `<div class="timing-grid">
+          <span>Link: ${item.breakdown.link}</span>
+          <span>Download: ${item.breakdown.download}</span>
+          <span>Edit: ${item.breakdown.edit}</span>
+          <span>Upload: ${item.breakdown.upload}</span>
+        </div>`
+      : '';
+
     body.innerHTML = `
       <div>${item.summary}</div>
       ${item.file ? `<div class="file">${item.file}</div>` : ''}
+      ${timingMeta.length ? `<div class="timing-meta">${timingMeta.join('')}</div>` : ''}
+      ${breakdownHtml}
     `;
 
     wrapper.appendChild(header);
@@ -137,29 +198,65 @@ function handleUploadMessage(payload) {
     }
   }
 
-  state.uploads.push({ profileId, timestamp, summary, file });
+  state.uploads.push({
+    profileId,
+    timestamp,
+    summary,
+    file,
+    totalTime: null,
+    mode: null,
+    breakdown: null
+  });
   renderUploadHistory();
 }
 
-// Bắt log thời gian tổng cho mỗi upload và map vào record gần nhất của profile đó
 function handleTimingMessage(payload) {
   const { profileId, message } = payload;
-  if (!message.includes('Tổng thời gian')) {
+  if (message.includes('Tổng thời gian')) {
+    const timeMatch = message.match(/:\s*(\d+\.?\d*)s/);
+    const totalTime = timeMatch ? parseFloat(timeMatch[1]) : null;
+    const modeMatch = message.match(/\(mode:\s*([^)]+)\)/i);
+    const mode = modeMatch ? modeMatch[1].trim().toLowerCase() : null;
+
+    for (let i = state.uploads.length - 1; i >= 0; i--) {
+      const item = state.uploads[i];
+      if (item.profileId === profileId && item.totalTime == null) {
+        if (totalTime !== null) {
+          item.totalTime = totalTime;
+        }
+        if (mode) {
+          item.mode = mode;
+        }
+        break;
+      }
+    }
+    renderUploadHistory();
     return;
   }
-  // Ví dụ: `[25141883] ⏱ Tổng thời gian từ nhận → download → merge → 65s → upload (đã trừ redirect 1s): 12.34s`
-  const match = message.match(/(\d+\.?\d*)s/);
-  if (!match) return;
-  const totalTime = parseFloat(match[1]);
 
-  // Gán vào upload gần nhất của cùng profile
-  for (let i = state.uploads.length - 1; i >= 0; i--) {
-    if (state.uploads[i].profileId === profileId && state.uploads[i].totalTime == null) {
-      state.uploads[i].totalTime = totalTime;
-      break;
+  if (message.includes('Chi tiết thời gian')) {
+    const extract = label => {
+      const regex = new RegExp(`${label}\\s([\\d.]+(?:ms|s))`, 'i');
+      const match = message.match(regex);
+      return match ? match[1] : '—';
+    };
+
+    const breakdown = {
+      link: extract('link'),
+      download: extract('download'),
+      edit: extract('edit'),
+      upload: extract('upload')
+    };
+
+    for (let i = state.uploads.length - 1; i >= 0; i--) {
+      const item = state.uploads[i];
+      if (item.profileId === profileId) {
+        item.breakdown = breakdown;
+        break;
+      }
     }
+    renderUploadHistory();
   }
-  renderUploadHistory();
 }
 
 profilesList.addEventListener('change', event => {
@@ -186,22 +283,38 @@ toggleAll.addEventListener('change', event => {
   refreshButtons();
 });
 
+modeButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const selectedMode = btn.dataset.mode;
+    state.mode = selectedMode;
+    modeButtons.forEach(b => b.classList.toggle('active', b === btn));
+  });
+});
+
 selectFileBtn.addEventListener('click', async () => {
-  const result = await window.controlApi.selectProfileFile();
-  if (result.canceled) return;
-  state.filePath = result.filePath;
-  state.profiles = result.profiles || [];
-  state.selected.clear();
-  state.running.clear();
-  fileInfo.textContent = `Đã chọn: ${state.filePath}`;
-  renderProfiles();
-  refreshButtons();
+  try {
+    setLoading(true, 'Đang đọc file profiles...');
+    const result = await window.controlApi.selectProfileFile();
+    if (result.canceled) return;
+    state.filePath = result.filePath;
+    state.profiles = result.profiles || [];
+    state.selected.clear();
+    state.running.clear();
+    fileInfo.textContent = `Đã chọn: ${state.filePath}`;
+    renderProfiles();
+    refreshButtons();
+  } finally {
+    setLoading(false);
+  }
 });
 
 startBtn.addEventListener('click', async () => {
   if (!state.selected.size) return;
   const ids = Array.from(state.selected);
-  await window.controlApi.startWorkers(ids);
+  await window.controlApi.startWorkers({
+    profileIds: ids,
+    mode: state.mode
+  });
 });
 
 stopBtn.addEventListener('click', async () => {
@@ -227,6 +340,8 @@ window.controlApi.onLogMessage(payload => {
 });
 
 window.controlApi.onWorkerState(payload => {
+  if (!Array.isArray(payload)) return;
+  state.workerState = new Map(payload.map(p => [p.profileId, p]));
   state.running = new Set(payload.filter(p => p.running).map(p => p.profileId));
   refreshButtons();
   renderProfiles();
@@ -241,7 +356,11 @@ async function bootstrap() {
   if (session.profiles) {
     state.profiles = session.profiles;
   }
-  if (session.running) {
+  if (session.workerState) {
+    state.workerState = new Map(session.workerState.map(item => [item.profileId, item]));
+    const runningProfiles = session.workerState.filter(item => item.running).map(item => item.profileId);
+    state.running = new Set(runningProfiles);
+  } else if (session.running) {
     state.running = new Set(session.running);
   }
   renderProfiles();

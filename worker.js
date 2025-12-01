@@ -57,6 +57,7 @@ const { performance } = require("perf_hooks");
 const API_KEY = workerData.apiKey;
 const CHANNEL_IDS = workerData.channels;
 const PROFILE_ID = workerData.profileId;
+const VIDEO_MODE = workerData.mode === 'raw' ? 'raw' : 'edit';
 // wsEndpoint sẽ được truyền từ main process khi start worker
 
 const youtube = google.youtube({ version: "v3", auth: API_KEY });
@@ -222,16 +223,23 @@ async function processQueue(page, initialInput) {
             }
             const endDownload = performance.now();
 
-            // 3️⃣ Ghép 65s
-            const start65s = performance.now();
-            const outputDir = path.resolve("output");
-            if (!fs.existsSync(outputDir)) {
-                fs.mkdirSync(outputDir, { recursive: true });
+            // 3️⃣ Xử lý video (edit hoặc giữ nguyên)
+            let finalFile = rawFile;
+            let editDurationMs = 0;
+            if (VIDEO_MODE === 'edit') {
+                const start65s = performance.now();
+                const outputDir = path.resolve("output");
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+                finalFile = path.resolve(outputDir, `video_65s_${Date.now()}.mp4`);
+                await make65sVideo(rawFile, finalFile);
+                const end65s = performance.now();
+                editDurationMs = end65s - start65s;
+                parentPort.postMessage(`[${PROFILE_ID}] ✅ Ghép 65s xong sau ${editDurationMs.toFixed(2)} ms`);
+            } else {
+                parentPort.postMessage(`[${PROFILE_ID}] ⚙️ Bỏ qua bước edit, dùng video gốc để upload (mode: ${VIDEO_MODE})`);
             }
-            const finalFile = path.resolve(outputDir, `video_65s_${Date.now()}.mp4`);
-            await make65sVideo(rawFile, finalFile);
-            const end65s = performance.now();
-            parentPort.postMessage(`[${PROFILE_ID}] ✅ Ghép 65s xong sau ${(end65s - start65s).toFixed(2)} ms`);
 
             // 4️⃣ Upload video
             const startUpload = performance.now();
@@ -242,14 +250,14 @@ async function processQueue(page, initialInput) {
             const endUpload = performance.now();
 
             const endTotal = performance.now();
-            const totalElapsed = ((endTotal - startTotal) / 1000).toFixed(2);
-            const adjustedElapsed = (totalElapsed - 1).toFixed(2);
+            const totalElapsed = (endTotal - startTotal) / 1000;
+            const adjustedElapsed = Math.max(0, totalElapsed - 1);
             parentPort.postMessage(`[${PROFILE_ID}] ✅ Upload xong: ${v.title} → ${finalFile}`);
             parentPort.postMessage(
-                `[${PROFILE_ID}] ⏱ Tổng thời gian từ nhận → download → merge → 65s → upload (đã trừ redirect 1s): ${adjustedElapsed}s`
+                `[${PROFILE_ID}] ⏱ Tổng thời gian (mode: ${VIDEO_MODE}) từ nhận → download → ${VIDEO_MODE === 'edit' ? 'edit' : 'upload trực tiếp'} → upload (đã trừ redirect 1s): ${adjustedElapsed.toFixed(2)}s`
             );
             parentPort.postMessage(
-                `[${PROFILE_ID}] Chi tiết thời gian: link ${(endLink - startLink).toFixed(2)}ms | download ${(endDownload - startDownload).toFixed(2)}ms | 65s ${(end65s - start65s).toFixed(2)}ms | upload ${(endUpload - startUpload).toFixed(2)}ms`
+                `[${PROFILE_ID}] Chi tiết thời gian (mode: ${VIDEO_MODE}): link ${(endLink - startLink).toFixed(2)}ms | download ${(endDownload - startDownload).toFixed(2)}ms | edit ${editDurationMs.toFixed(2)}ms${VIDEO_MODE === 'edit' ? '' : ' (skipped)'} | upload ${(endUpload - startUpload).toFixed(2)}ms`
             );
 
             await page.goto("https://www.tiktok.com/tiktokstudio/upload?from=webapp", { waitUntil: "networkidle2" });
@@ -337,6 +345,7 @@ async function main() {
     parentPort.postMessage(`[${PROFILE_ID}]   - API Key: ${API_KEY.substring(0, 10)}...${API_KEY.substring(API_KEY.length - 5)}`);
     parentPort.postMessage(`[${PROFILE_ID}]   - Số kênh: ${CHANNEL_IDS.length}`);
     parentPort.postMessage(`[${PROFILE_ID}]   - Danh sách kênh: ${CHANNEL_IDS.join(', ')}`);
+    parentPort.postMessage(`[${PROFILE_ID}] 🎚 Chế độ xử lý video: ${VIDEO_MODE === 'edit' ? 'Edit videos (ghép 65s)' : 'Không edit (upload trực tiếp)'}`);
     
     // Lấy wsEndpoint từ workerData (được truyền từ main process nếu dùng Electron UI)
     // Nếu không có (chạy từ script CLI / main cũ) thì tự mở profile qua Genlogin.

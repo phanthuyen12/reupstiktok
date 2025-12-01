@@ -18,6 +18,13 @@
       </div>
     </header>
 
+    <div id="globalOverlay" class="loading-overlay hidden">
+      <div class="loading-card">
+        <div class="spinner"></div>
+        <p id="loadingMessage">Đang xử lý...</p>
+      </div>
+    </div>
+
     <main>
       <section class="panel">
         <div class="panel-header">
@@ -39,6 +46,23 @@
               <input type="checkbox" id="toggleAll" />
               <span>Chọn tất cả</span>
             </label>
+          </div>
+        </div>
+
+        <div class="video-mode">
+          <div class="video-mode__info">
+            <h3>Chế độ xử lý video</h3>
+            <p>Chọn cách xử lý sau khi tải video về trước khi upload lên TikTok.</p>
+          </div>
+          <div class="mode-toggle" role="group" aria-label="Video processing mode">
+            <button class="mode-btn active" data-mode="edit">
+              Edit videos
+              <span>Ghép 65s / xử lý trước khi upload</span>
+            </button>
+            <button class="mode-btn" data-mode="raw">
+              Không edit
+              <span>Tải về và upload trực tiếp</span>
+            </button>
           </div>
         </div>
 

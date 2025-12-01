@@ -2,7 +2,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('controlApi', {
   selectProfileFile: () => ipcRenderer.invoke('select-profile-file'),
-  startWorkers: profileIds => ipcRenderer.invoke('start-workers', profileIds),
+  startWorkers: payload => {
+    const request = Array.isArray(payload) ? { profileIds: payload } : payload;
+    return ipcRenderer.invoke('start-workers', request);
+  },
   stopWorkers: profileIds => ipcRenderer.invoke('stop-workers', profileIds),
   stopAllWorkers: () => ipcRenderer.invoke('stop-all-workers'),
   getSessionState: () => ipcRenderer.invoke('get-session-state'),

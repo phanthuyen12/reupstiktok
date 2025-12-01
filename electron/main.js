@@ -7,7 +7,8 @@ let mainWindow;
 let profilesFilePath = null;
 let loadedProfiles = [];
 let isQuitting = false;
-const workers = new Map(); // profileId -> worker instance
+const workers = new Map(); // profileId -> { worker, mode }
+const normalizeMode = (mode = 'edit') => (mode === 'raw' ? 'raw' : 'edit');
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -68,21 +69,23 @@ function broadcastWorkerState() {
   if (!mainWindow) return;
   const state = loadedProfiles.map(profile => ({
     profileId: profile.profileId,
-    running: workers.has(profile.profileId)
+    running: workers.has(profile.profileId),
+    mode: workers.get(profile.profileId)?.mode || null
   }));
   mainWindow.webContents.send('worker-state', state);
 }
 
-function startWorker(profile) {
+function startWorker(profile, options = {}) {
   if (workers.has(profile.profileId)) {
     return;
   }
 
   const workerPath = path.join(app.getAppPath(), 'worker.js');
-  const worker = new Worker(workerPath, { workerData: profile });
+  const mode = normalizeMode(options.mode);
+  const worker = new Worker(workerPath, { workerData: { ...profile, mode } });
 
-  workers.set(profile.profileId, worker);
-  logToRenderer(`🚀 Worker started`, profile.profileId);
+  workers.set(profile.profileId, { worker, mode });
+  logToRenderer(`🚀 Worker started (mode: ${mode})`, profile.profileId);
   broadcastWorkerState();
 
   worker.on('message', msg => logToRenderer(msg, profile.profileId));
@@ -97,9 +100,9 @@ function startWorker(profile) {
 }
 
 async function stopWorker(profileId) {
-  const worker = workers.get(profileId);
-  if (!worker) return;
-  await worker.terminate();
+  const info = workers.get(profileId);
+  if (!info) return;
+  await info.worker.terminate();
   logToRenderer(`⛔ Worker stopped`, profileId);
   workers.delete(profileId);
   broadcastWorkerState();
@@ -140,14 +143,17 @@ ipcMain.handle('select-profile-file', async () => {
   }
 });
 
-ipcMain.handle('start-workers', (_event, profileIds) => {
+ipcMain.handle('start-workers', (_event, payload) => {
+  const request = Array.isArray(payload) ? { profileIds: payload } : payload || {};
+  const profileIds = Array.isArray(request.profileIds) ? request.profileIds : [];
+  const mode = request.mode;
   if (!loadedProfiles.length) {
     return { ok: false, message: 'Chưa load profiles.txt' };
   }
   profileIds.forEach(id => {
     const profile = loadedProfiles.find(p => p.profileId === id);
     if (profile) {
-      startWorker(profile);
+      startWorker(profile, { mode });
     }
   });
   return { ok: true };
@@ -167,7 +173,12 @@ ipcMain.handle('get-session-state', () => {
   return {
     profilesFilePath,
     profiles: loadedProfiles,
-    running: Array.from(workers.keys())
+    running: Array.from(workers.keys()),
+    workerState: Array.from(workers.entries()).map(([profileId, info]) => ({
+      profileId,
+      running: true,
+      mode: info.mode
+    }))
   };
 });
 
