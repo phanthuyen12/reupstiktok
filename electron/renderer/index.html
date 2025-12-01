@@ -47,10 +47,22 @@
 
       <section class="panel log-panel">
         <div class="panel-header">
-          <h2>Logs realtime</h2>
-          <button id="clearLogsBtn">Xoá log</button>
+          <div>
+            <h2>Giám sát hệ thống</h2>
+            <p>Theo dõi log realtime và lịch sử upload video</p>
+          </div>
+          <button id="clearLogsBtn">Xoá toàn bộ log</button>
         </div>
-        <div id="logStream" class="log-stream"></div>
+
+        <div class="log-tabs">
+          <button class="log-tab active" data-tab="realtime">Log realtime</button>
+          <button class="log-tab" data-tab="uploads">Lịch sử upload</button>
+        </div>
+
+        <div class="log-views">
+          <div id="logStream" class="log-stream log-view active"></div>
+          <div id="uploadLog" class="log-stream log-view"></div>
+        </div>
       </section>
     </main>
 

@@ -203,21 +203,57 @@ button {
 }
 
 .log-panel {
-  max-height: 360px;
+  max-height: 420px;
   display: flex;
   flex-direction: column;
 }
 
-.log-stream {
+.log-tabs {
+  margin-top: 16px;
+  display: inline-flex;
+  background: #181818;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid #333;
+  gap: 4px;
+}
+
+.log-tab {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: #bfbfbf;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.log-tab.active {
+  background: #f5f5f5;
+  color: #111;
+}
+
+.log-views {
   margin-top: 12px;
+  position: relative;
+  flex: 1;
+}
+
+.log-stream {
+  position: absolute;
+  inset: 0;
   background: #111;
   border-radius: 12px;
   padding: 16px;
-  flex: 1;
   overflow-y: auto;
   font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 0.88rem;
   line-height: 1.45;
+  display: none;
+}
+
+.log-view.active {
+  display: block;
 }
 
 .log-entry {
@@ -236,6 +272,41 @@ button {
 
 .log-entry .content {
   color: #f3f3f3;
+}
+
+/* Upload history styles */
+.upload-entry {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #181818;
+  border: 1px solid #2e2e2e;
+  margin-bottom: 10px;
+}
+
+.upload-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  color: #9f9f9f;
+}
+
+.upload-entry-header .tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #143c24;
+  color: #39d98a;
+  font-weight: 600;
+}
+
+.upload-entry-body {
+  font-size: 0.88rem;
+  color: #f3f3f3;
+}
+
+.upload-entry-body .file {
+  color: #c2e4ff;
 }
 
 @media (min-width: 1200px) {

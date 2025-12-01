@@ -6,13 +6,16 @@ const clearLogsBtn = document.getElementById('clearLogsBtn');
 const fileInfo = document.getElementById('fileInfo');
 const profilesList = document.getElementById('profilesList');
 const logStream = document.getElementById('logStream');
+const uploadLog = document.getElementById('uploadLog');
+const logTabs = document.querySelectorAll('.log-tab');
 const toggleAll = document.getElementById('toggleAll');
 
 const state = {
   filePath: null,
   profiles: [],
   running: new Set(),
-  selected: new Set()
+  selected: new Set(),
+  uploads: []
 };
 
 function formatChannels(channels) {
@@ -78,6 +81,64 @@ function appendLog({ profileId, message, timestamp }) {
   logStream.scrollTop = logStream.scrollHeight;
 }
 
+function renderUploadHistory() {
+  uploadLog.innerHTML = '';
+  if (!state.uploads.length) {
+    uploadLog.innerHTML =
+      '<div class="log-entry">Chưa có video nào được upload trong phiên này.</div>';
+    return;
+  }
+
+  state.uploads.forEach(item => {
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('upload-entry');
+
+    const header = document.createElement('div');
+    header.classList.add('upload-entry-header');
+    header.innerHTML = `
+      <span>${new Date(item.timestamp).toLocaleTimeString()}</span>
+      <span class="tag">Uploaded · [${item.profileId}]</span>
+    `;
+
+    const body = document.createElement('div');
+    body.classList.add('upload-entry-body');
+    body.innerHTML = `
+      <div>${item.summary}</div>
+      ${item.file ? `<div class="file">${item.file}</div>` : ''}
+    `;
+
+    wrapper.appendChild(header);
+    wrapper.appendChild(body);
+    uploadLog.appendChild(wrapper);
+  });
+}
+
+function handleUploadMessage(payload) {
+  const { profileId, message, timestamp } = payload;
+
+  // Chỉ bắt các log có nội dung upload thành công
+  if (!message.includes('✅ Upload xong')) {
+    return;
+  }
+
+  // Message ví dụ: `[25141883] ✅ Upload xong: title → /path/to/file.mp4`
+  const parts = message.split('✅ Upload xong:');
+  let summary = message.trim();
+  let file = null;
+
+  if (parts.length > 1) {
+    summary = parts[1].trim();
+    const arrowIdx = summary.lastIndexOf('→');
+    if (arrowIdx !== -1) {
+      file = summary.slice(arrowIdx + 1).trim();
+      summary = summary.slice(0, arrowIdx).trim();
+    }
+  }
+
+  state.uploads.push({ profileId, timestamp, summary, file });
+  renderUploadHistory();
+}
+
 profilesList.addEventListener('change', event => {
   const checkbox = event.target;
   if (checkbox.dataset.profile) {
@@ -132,10 +193,13 @@ stopAllBtn.addEventListener('click', async () => {
 
 clearLogsBtn.addEventListener('click', () => {
   logStream.innerHTML = '';
+  uploadLog.innerHTML = '';
+  state.uploads = [];
 });
 
 window.controlApi.onLogMessage(payload => {
   appendLog(payload);
+  handleUploadMessage(payload);
 });
 
 window.controlApi.onWorkerState(payload => {
@@ -158,7 +222,27 @@ async function bootstrap() {
   }
   renderProfiles();
   refreshButtons();
+  renderUploadHistory();
 }
 
 bootstrap();
+
+// Tabs chuyển đổi giữa log realtime và lịch sử upload
+logTabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    logTabs.forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+
+    const target = tab.dataset.tab;
+    document.querySelectorAll('.log-view').forEach(view => {
+      if (view.id === 'logStream' && target === 'realtime') {
+        view.classList.add('active');
+      } else if (view.id === 'uploadLog' && target === 'uploads') {
+        view.classList.add('active');
+      } else {
+        view.classList.remove('active');
+      }
+    });
+  });
+});
 
