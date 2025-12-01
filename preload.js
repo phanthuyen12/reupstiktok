@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openProfileTiktok: (profileId) => ipcRenderer.invoke('open-profile-tiktok', profileId),
 
   startMonitoring: (profileId) => ipcRenderer.invoke('start-monitoring', profileId),
+  stopMonitoring: (profileId) => ipcRenderer.invoke('stop-monitoring', profileId),
+  closeProfile: (profileId) => ipcRenderer.invoke('close-profile', profileId),
   stopProfileMonitoring: (profileId) => ipcRenderer.invoke('stop-profile-monitoring', profileId),
 
   // Profile logs (theo dõi từng giây)
@@ -42,6 +44,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onProfileNotification: (callback) => {
     ipcRenderer.on('profile-notification', (event, data) => callback(data));
+  },
+  onProfileStatusUpdate: (callback) => {
+    ipcRenderer.on('profile-status-update', (event, data) => callback(data));
+  },
+  onProfilesLoaded: (callback) => {
+    ipcRenderer.on('profiles-loaded', (event, data) => callback(data));
   },
 
   // Analytics

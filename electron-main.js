@@ -57,9 +57,52 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    // Tự động load profiles khi app mở
+    loadProfilesOnStart();
   });
 
   // mainWindow.webContents.openDevTools();
+}
+
+// Tự động load profiles khi app mở
+async function loadProfilesOnStart() {
+  try {
+    const profilesPath = path.join(__dirname, 'profiles.txt');
+    if (!fs.existsSync(profilesPath)) {
+      logSystem('File profiles.txt không tồn tại', 'warning', 'system');
+      return;
+    }
+
+    const raw = fs.readFileSync(profilesPath, 'utf8');
+    const lines = raw
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('#'));
+
+    profiles.length = 0;
+    for (const line of lines) {
+      const parts = line.split('|').map(p => p.trim());
+      if (parts.length < 3) {
+        console.error('❌ Sai cấu trúc dòng:', line);
+        continue;
+      }
+
+      const profileId = parts[0];
+      const apiKey = parts[1];
+      const channels = parts[2] ? parts[2].split(',').map(c => c.trim()).filter(Boolean) : [];
+
+      profiles.push({ profileId, apiKey, channels });
+    }
+
+    logSystem(`Đã tự động load ${profiles.length} profiles từ profiles.txt`, 'success', 'system');
+    
+    // Gửi profiles đến renderer
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('profiles-loaded', { profiles });
+    }
+  } catch (error) {
+    logSystem(`Lỗi khi load profiles: ${error.message}`, 'error', 'system');
+  }
 }
 
 app.whenReady().then(() => {
@@ -173,17 +216,36 @@ ipcMain.handle('select-profiles-file', async () => {
 
 // Lấy danh sách profiles
 ipcMain.handle('get-profiles', () => {
-  return profiles.map(p => ({
-    profileId: p.profileId,
-    channels: p.channels,
-    status: workers.has(p.profileId) ? workers.get(p.profileId).status : 'stopped',
-    workerPid: workers.has(p.profileId) ? workers.get(p.profileId).worker.threadId : null,
-    stats: workers.has(p.profileId) ? workers.get(p.profileId).stats : {
-      totalVideos: 0,
-      videosToday: 0,
-      avgProcessingTime: 0
+  return profiles.map(p => {
+    const profileId = p.profileId;
+    let status = 'stopped';
+    
+    // Kiểm tra status từ profileBrowsers trước
+    if (profileBrowsers.has(profileId)) {
+      const browserData = profileBrowsers.get(profileId);
+      status = browserData.status || 'opened';
     }
-  }));
+    
+    // Nếu có worker đang chạy, status là running
+    if (workers.has(profileId)) {
+      const workerData = workers.get(profileId);
+      if (workerData.status === 'running') {
+        status = 'running';
+      }
+    }
+    
+    return {
+      profileId: profileId,
+      channels: p.channels,
+      status: status,
+      workerPid: workers.has(profileId) ? workers.get(profileId).worker.threadId : null,
+      stats: workers.has(profileId) ? workers.get(profileId).stats : {
+        totalVideos: 0,
+        videosToday: 0,
+        avgProcessingTime: 0
+      }
+    };
+  });
 });
 
 // Start worker cho profile
@@ -412,7 +474,7 @@ ipcMain.handle('open-profile', async (event, profileId) => {
   }
 });
 
-// Mở profile và điều hướng đến TikTok upload, tìm input file (KHÔNG start worker)
+// Mở profile và điều hướng đến TikTok upload, tìm input file (theo testdow.js)
 ipcMain.handle('open-profile-tiktok', async (event, profileId) => {
   logSystem(`Bắt đầu mở profile ${profileId} trong Genlogin`, 'info', 'genlogin');
   const Genlogin = require('./Genlogin');
@@ -429,26 +491,26 @@ ipcMain.handle('open-profile-tiktok', async (event, profileId) => {
       }
     });
 
-    // Lấy wsEndpoint
+    // Lấy wsEndpoint theo testdow.js (retry 15 lần)
     let wsEndpoint;
-    const endpointResult = await gen.getWsEndpoint(profileId);
-    if (endpointResult?.data?.wsEndpoint) {
-      wsEndpoint = endpointResult.data.wsEndpoint;
-    } else {
-      const result = await gen.runProfile(profileId);
-      if (result.success && result.wsEndpoint) {
-        wsEndpoint = result.wsEndpoint;
-      } else {
-        // Retry với delay
-        for (let i = 0; i < 15; i++) {
-          const retryResult = await gen.runProfile(profileId);
-          if (retryResult.success && retryResult.wsEndpoint) {
-            wsEndpoint = retryResult.wsEndpoint;
-            break;
-          }
-          await new Promise(r => setTimeout(r, 1000));
+    for (let i = 0; i < 15; i++) {
+      const profile = await gen.runProfile(profileId);
+      wsEndpoint = profile.wsEndpoint;
+      if (wsEndpoint) break;
+      logSystem(`⏳ Chờ profile ${profileId} chạy... retry ${i + 1}`, 'info', 'genlogin');
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    
+    if (!wsEndpoint) {
+      logSystem(`Profile ${profileId} chưa chạy sau 15 lần retry`, 'error', 'genlogin');
+      mainWindow.webContents.send('profile-log', {
+        profileId,
+        log: {
+          timestamp: new Date().toISOString(),
+          message: `❌ Không thể mở profile trong Genlogin`
         }
-      }
+      });
+      return { success: false, error: 'Không thể mở profile trong Genlogin' };
     }
 
     if (!wsEndpoint) {
@@ -470,14 +532,16 @@ ipcMain.handle('open-profile-tiktok', async (event, profileId) => {
       }
     });
 
-    // Kết nối với browser
+    // Kết nối với browser (theo testdow.js)
     const browser = await puppeteer.connect({
       browserWSEndpoint: wsEndpoint,
       ignoreHTTPSErrors: true,
-      defaultViewport: null
+      defaultViewport: null,
+      args: ["--disable-gpu", "--disable-infobars", "--mute-audio", "--window-size=584,716"]
     });
 
-    const page = (await browser.pages())[0] || await browser.newPage();
+    const pages = await browser.pages();
+    const page = pages[0];
 
     // Điều hướng đến TikTok upload
     mainWindow.webContents.send('profile-log', {
@@ -565,9 +629,27 @@ ipcMain.handle('open-profile-tiktok', async (event, profileId) => {
     }, 1000); // Mỗi giây
 
     // Lưu browser instance và logInterval (chưa start worker)
-    profileBrowsers.set(profileId, { browser, page, wsEndpoint, logInterval, ready: true });
+    profileBrowsers.set(profileId, { 
+      browser, 
+      page, 
+      wsEndpoint, 
+      logInterval, 
+      ready: true,
+      status: 'opened'
+    });
+    
+    // Cập nhật status
+    if (workers.has(profileId)) {
+      workers.get(profileId).status = 'opened';
+    }
     
     logSystem(`Profile ${profileId} đã được mở thành công và sẵn sàng upload`, 'success', 'genlogin');
+    
+    // Gửi status update
+    mainWindow.webContents.send('profile-status-update', {
+      profileId,
+      status: 'opened'
+    });
 
     return { success: true, wsEndpoint };
   } catch (error) {
@@ -594,12 +676,19 @@ ipcMain.handle('start-monitoring', async (event, profileId) => {
 
   // Kiểm tra xem profile đã được mở chưa
   if (!profileBrowsers.has(profileId)) {
+    logSystem(`Profile ${profileId} chưa được mở. Vui lòng mở profile trước.`, 'error', 'worker');
     return { success: false, error: 'Vui lòng mở profile trước khi bắt đầu theo dõi' };
   }
 
   const browserData = profileBrowsers.get(profileId);
-  if (!browserData.ready) {
+  if (!browserData || !browserData.ready) {
+    logSystem(`Profile ${profileId} chưa sẵn sàng. Browser data: ${JSON.stringify(browserData)}`, 'error', 'worker');
     return { success: false, error: 'Profile chưa sẵn sàng. Vui lòng đợi profile mở xong.' };
+  }
+  
+  if (!browserData.wsEndpoint) {
+    logSystem(`Profile ${profileId} không có wsEndpoint`, 'error', 'worker');
+    return { success: false, error: 'Profile chưa có wsEndpoint. Vui lòng mở lại profile.' };
   }
 
   // Kiểm tra xem worker đã chạy chưa
@@ -713,6 +802,12 @@ ipcMain.handle('start-monitoring', async (event, profileId) => {
   });
 
   workers.set(profileId, workerDataObj);
+  
+  // Cập nhật status
+  browserData.status = 'monitoring';
+  if (workers.has(profileId)) {
+    workers.get(profileId).status = 'running';
+  }
 
   mainWindow.webContents.send('profile-log', {
     profileId,
@@ -722,12 +817,103 @@ ipcMain.handle('start-monitoring', async (event, profileId) => {
     }
   });
   
+  // Gửi status update
+  mainWindow.webContents.send('profile-status-update', {
+    profileId,
+    status: 'running'
+  });
+  
   logSystem(`Đã bắt đầu monitoring thành công cho profile ${profileId}`, 'success', 'worker');
 
   return { success: true, workerId: worker.threadId };
 });
 
-// Dừng theo dõi profile
+// Dừng theo dõi (stop monitoring nhưng giữ profile mở)
+ipcMain.handle('stop-monitoring', async (event, profileId) => {
+  logSystem(`Dừng monitoring cho profile ${profileId}`, 'info', 'worker');
+  
+  if (!workers.has(profileId)) {
+    return { success: false, error: 'Worker không đang chạy' };
+  }
+
+  const workerData = workers.get(profileId);
+  if (workerData.worker) {
+    await workerData.worker.terminate();
+  }
+
+  workerData.status = 'stopped';
+  
+  // Cập nhật status trong profileBrowsers
+  if (profileBrowsers.has(profileId)) {
+    profileBrowsers.get(profileId).status = 'opened';
+  }
+  
+  // Gửi status update
+  mainWindow.webContents.send('profile-status-update', {
+    profileId,
+    status: 'opened'
+  });
+  
+  logSystem(`Đã dừng monitoring cho profile ${profileId}`, 'success', 'worker');
+  
+  return { success: true };
+});
+
+// Đóng profile (đóng browser và dừng monitoring)
+ipcMain.handle('close-profile', async (event, profileId) => {
+  logSystem(`Đóng profile ${profileId}`, 'info', 'genlogin');
+  
+  // Dừng worker nếu đang chạy
+  if (workers.has(profileId)) {
+    const workerData = workers.get(profileId);
+    if (workerData.worker) {
+      await workerData.worker.terminate();
+    }
+    workerData.status = 'stopped';
+  }
+  
+  // Đóng browser và clear monitoring
+  if (profileBrowsers.has(profileId)) {
+    const browserData = profileBrowsers.get(profileId);
+    
+    // Clear log interval
+    if (browserData.logInterval) {
+      clearInterval(browserData.logInterval);
+    }
+    
+    // Disconnect browser
+    try {
+      if (browserData.browser) {
+        await browserData.browser.disconnect();
+      }
+    } catch (error) {
+      logSystem(`Lỗi khi disconnect browser: ${error.message}`, 'warning', 'genlogin');
+    }
+    
+    profileBrowsers.delete(profileId);
+  }
+  
+  // Stop profile trong Genlogin
+  try {
+    const Genlogin = require('./Genlogin');
+    const gen = new Genlogin('');
+    await gen.stopProfile(profileId);
+  } catch (error) {
+    logSystem(`Lỗi khi stop profile trong Genlogin: ${error.message}`, 'warning', 'genlogin');
+  }
+  
+  // Gửi status update
+  mainWindow.webContents.send('profile-status-update', {
+    profileId,
+    status: 'stopped'
+  });
+  
+  logSystem(`Đã đóng profile ${profileId}`, 'success', 'genlogin');
+  
+  return { success: true };
+});
+
+// Dừng theo dõi profile (giữ lại để tương thích)
 ipcMain.handle('stop-profile-monitoring', async (event, profileId) => {
   if (profileBrowsers.has(profileId)) {
     const browserData = profileBrowsers.get(profileId);

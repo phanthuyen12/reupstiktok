@@ -66,7 +66,7 @@ async function checkChannel(channelId) {
     }
 }
 
-// --- Upload video (giống testdow.js)
+// --- Upload video (theo testdow.js)
 async function uploadVideo(page, input, filePath) {
     try {
         // Đảm bảo file path là absolute path
@@ -76,19 +76,12 @@ async function uploadVideo(page, input, filePath) {
             throw new Error(`File không tồn tại: ${absolutePath}`);
         }
         
-        // Sử dụng setInputFiles thay vì uploadFile để tránh lỗi
-        await input.setInputFiles(absolutePath);
+        // Sử dụng uploadFile như testdow.js
+        await input.uploadFile(absolutePath);
         parentPort.postMessage(`[${PROFILE_ID}] 📤 Upload video xong`);
     } catch (err) {
-        // Nếu setInputFiles không hoạt động, thử uploadFile
-        try {
-            const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
-            await input.uploadFile(absolutePath);
-            parentPort.postMessage(`[${PROFILE_ID}] 📤 Upload video xong (fallback)`);
-        } catch (err2) {
-            parentPort.postMessage(`[${PROFILE_ID}] ❌ Lỗi khi upload file: ${err2.message}`);
-            throw err2;
-        }
+        parentPort.postMessage(`[${PROFILE_ID}] ❌ Lỗi khi upload file: ${err.message}`);
+        throw err;
     }
 
     const btnSelector = 'button[data-e2e="post_video_button"]';

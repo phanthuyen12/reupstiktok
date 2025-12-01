@@ -244,6 +244,17 @@ body {
   border-color: #ff3333;
 }
 
+.btn-warning {
+  background: var(--warning);
+  color: var(--bg-primary);
+  border-color: var(--warning);
+}
+
+.btn-warning:hover {
+  background: #ff9900;
+  border-color: #ff9900;
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
