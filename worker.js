@@ -179,6 +179,18 @@ async function main() {
 
     parentPort.postMessage(`[${PROFILE_ID}] ✅ Đã khởi động monitoring. Đang theo dõi ${CHANNEL_IDS.length} kênh YouTube...`);
     parentPort.postMessage(`[${PROFILE_ID}] ⏰ Bắt đầu kiểm tra video mới từ ${new Date().toLocaleString('vi-VN')}...`);
+
+    // Heartbeat log mỗi giây để hiển thị trạng thái monitoring
+    const heartbeat = setInterval(() => {
+        const now = new Date();
+        parentPort.postMessage(
+            `[${PROFILE_ID}] 💓 Monitoring vẫn đang chạy (${CHANNEL_IDS.length} kênh) - ${now.toLocaleTimeString('vi-VN')}`
+        );
+    }, 1000);
+
+    const cleanup = () => clearInterval(heartbeat);
+    process.on('exit', cleanup);
+    parentPort.on('close', cleanup);
     
     let checkCount = 0;
     while (true) {
