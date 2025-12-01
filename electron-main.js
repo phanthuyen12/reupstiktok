@@ -166,11 +166,68 @@ ipcMain.handle('start-worker', async (event, profileId) => {
     }
   }
 
+  // Bước 1: Mở profile trong Genlogin trước
+  const Genlogin = require('./Genlogin.js');
+  const gen = new Genlogin('');
+  
+  let wsEndpoint;
+  try {
+    // Gửi thông báo đang mở profile
+    mainWindow.webContents.send('worker-log', {
+      profileId,
+      log: {
+        timestamp: new Date().toISOString(),
+        message: `[${profileId}] 🔄 Đang mở profile trong Genlogin...`
+      }
+    });
+    
+    // Thử lấy wsEndpoint (có thể profile đã mở sẵn)
+    const endpointResult = await gen.getWsEndpoint(profileId);
+    if (endpointResult?.data?.wsEndpoint) {
+      wsEndpoint = endpointResult.data.wsEndpoint;
+    } else {
+      // Nếu chưa mở, mở profile
+      const result = await gen.runProfile(profileId);
+      if (result.success && result.wsEndpoint) {
+        wsEndpoint = result.wsEndpoint;
+      } else {
+        // Retry với delay
+        for (let i = 0; i < 15; i++) {
+          const retryResult = await gen.runProfile(profileId);
+          if (retryResult.success && retryResult.wsEndpoint) {
+            wsEndpoint = retryResult.wsEndpoint;
+            break;
+          }
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+    }
+
+    if (!wsEndpoint) {
+      return { success: false, error: 'Không thể mở profile trong Genlogin. Vui lòng kiểm tra Genlogin đã chạy chưa.' };
+    }
+
+    // Gửi thông báo mở profile thành công
+    mainWindow.webContents.send('worker-log', {
+      profileId,
+      log: {
+        timestamp: new Date().toISOString(),
+        message: `[${profileId}] ✅ Profile đã được mở trong Genlogin`
+      }
+    });
+  } catch (error) {
+    return { success: false, error: `Lỗi khi mở profile: ${error.message}` };
+  }
+
+  // Bước 2: Start worker với wsEndpoint
   const worker = new Worker(path.join(__dirname, 'worker.js'), {
-    workerData: profile
+    workerData: {
+      ...profile,
+      wsEndpoint: wsEndpoint
+    }
   });
 
-  const workerData = {
+  const workerDataObj = {
     worker,
     status: 'running',
     logs: [],
@@ -180,36 +237,37 @@ ipcMain.handle('start-worker', async (event, profileId) => {
       avgProcessingTime: 0,
       processingTimes: []
     },
-    startTime: Date.now()
+    startTime: Date.now(),
+    wsEndpoint: wsEndpoint
   };
 
   worker.on('message', (msg) => {
-    workerData.logs.push({
+    workerDataObj.logs.push({
       timestamp: new Date().toISOString(),
       message: msg
     });
 
     // Giới hạn logs để tránh memory leak
-    if (workerData.logs.length > 1000) {
-      workerData.logs = workerData.logs.slice(-500);
+    if (workerDataObj.logs.length > 1000) {
+      workerDataObj.logs = workerDataObj.logs.slice(-500);
     }
 
     // Parse stats từ messages
     if (msg.includes('✅ Upload xong')) {
-      workerData.stats.totalVideos++;
-      workerData.stats.videosToday++;
+      workerDataObj.stats.totalVideos++;
+      workerDataObj.stats.videosToday++;
     }
 
     if (msg.includes('Tổng thời gian')) {
       const match = msg.match(/(\d+\.?\d*)s/);
       if (match) {
         const time = parseFloat(match[1]);
-        workerData.stats.processingTimes.push(time);
-        if (workerData.stats.processingTimes.length > 100) {
-          workerData.stats.processingTimes = workerData.stats.processingTimes.slice(-50);
+        workerDataObj.stats.processingTimes.push(time);
+        if (workerDataObj.stats.processingTimes.length > 100) {
+          workerDataObj.stats.processingTimes = workerDataObj.stats.processingTimes.slice(-50);
         }
-        const sum = workerData.stats.processingTimes.reduce((a, b) => a + b, 0);
-        workerData.stats.avgProcessingTime = sum / workerData.stats.processingTimes.length;
+        const sum = workerDataObj.stats.processingTimes.reduce((a, b) => a + b, 0);
+        workerDataObj.stats.avgProcessingTime = sum / workerDataObj.stats.processingTimes.length;
       }
     }
 
@@ -225,13 +283,13 @@ ipcMain.handle('start-worker', async (event, profileId) => {
     // Gửi stats update
     mainWindow.webContents.send('worker-stats-update', {
       profileId,
-      stats: workerData.stats
+      stats: workerDataObj.stats
     });
   });
 
   worker.on('error', (err) => {
-    workerData.status = 'error';
-    workerData.logs.push({
+    workerDataObj.status = 'error';
+    workerDataObj.logs.push({
       timestamp: new Date().toISOString(),
       message: `❌ Worker error: ${err.message}`
     });
@@ -244,9 +302,9 @@ ipcMain.handle('start-worker', async (event, profileId) => {
 
   worker.on('exit', (code) => {
     if (code !== 0) {
-      workerData.status = 'error';
+      workerDataObj.status = 'error';
     } else {
-      workerData.status = 'stopped';
+      workerDataObj.status = 'stopped';
     }
 
     mainWindow.webContents.send('worker-exit', {
@@ -255,7 +313,7 @@ ipcMain.handle('start-worker', async (event, profileId) => {
     });
   });
 
-  workers.set(profileId, workerData);
+  workers.set(profileId, workerDataObj);
 
   return { success: true, workerId: worker.threadId };
 });

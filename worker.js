@@ -10,23 +10,17 @@ const { performance } = require("perf_hooks");
 const API_KEY = workerData.apiKey;
 const CHANNEL_IDS = workerData.channels;
 const PROFILE_ID = workerData.profileId;
+// wsEndpoint sẽ được truyền từ main process khi start worker
 
 const youtube = google.youtube({ version: "v3", auth: API_KEY });
 const last_video_ids = new Set();
 const startTime = new Date();
 
-// --- Mở profile 1 lần
-async function initBrowser() {
-    const gen = new Genlogin("");
-    let wsEndpoint;
-
-    for (let i = 0; i < 15; i++) {
-        const profile = await gen.runProfile(PROFILE_ID);
-        wsEndpoint = profile.wsEndpoint;
-        if (wsEndpoint) break;
-        await new Promise(r => setTimeout(r, 1000));
+// --- Mở profile 1 lần (wsEndpoint được truyền từ main process)
+async function initBrowser(wsEndpoint) {
+    if (!wsEndpoint) {
+        throw new Error("Profile chưa được mở trong Genlogin. Vui lòng mở profile trước khi bắt đầu theo dõi.");
     }
-    if (!wsEndpoint) throw new Error("Profile chưa chạy");
 
     const browser = await puppeteer.connect({
         browserWSEndpoint: wsEndpoint,
@@ -103,7 +97,9 @@ async function uploadVideo(page, input, filePath) {
 
 // --- Main loop 24/7
 async function main() {
-    let { page, input } = await initBrowser();
+    // Lấy wsEndpoint từ workerData (được truyền từ main process)
+    const wsEndpoint = workerData.wsEndpoint;
+    let { page, input } = await initBrowser(wsEndpoint);
 
     while (true) {
         for (const chId of CHANNEL_IDS) {

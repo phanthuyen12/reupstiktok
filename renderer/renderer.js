@@ -380,15 +380,16 @@ function changePage(delta) {
 // Worker Actions
 async function startWorker(profileId) {
   try {
+    showNotification(`Đang mở profile ${profileId} trong Genlogin...`, 'info');
     const result = await window.electronAPI.startWorker(profileId);
     if (result.success) {
-      showNotification(`Worker started for ${profileId}`, 'success');
+      showNotification(`✅ Đã mở profile và bắt đầu theo dõi: ${profileId}`, 'success');
       refreshProfiles();
     } else {
-      showNotification(`Failed to start worker: ${result.error}`, 'error');
+      showNotification(`❌ Không thể bắt đầu theo dõi: ${result.error}`, 'error');
     }
   } catch (error) {
-    showNotification(`Error: ${error.message}`, 'error');
+    showNotification(`❌ Lỗi: ${error.message}`, 'error');
   }
 }
 
@@ -408,11 +409,13 @@ async function stopWorker(profileId) {
 
 async function handleStartWorkers() {
   if (selectedProfiles.size === 0) {
-    showNotification('Please select at least one profile', 'warning');
+    showNotification('Vui lòng chọn ít nhất một profile', 'warning');
     return;
   }
 
   const profileIds = Array.from(selectedProfiles);
+  showNotification(`Đang mở ${profileIds.length} profile(s) trong Genlogin và bắt đầu theo dõi...`, 'info');
+  
   let success = 0;
   let failed = 0;
 
@@ -423,13 +426,21 @@ async function handleStartWorkers() {
         success++;
       } else {
         failed++;
+        console.error(`Failed to start ${profileId}:`, result.error);
       }
+      // Delay nhỏ giữa các profile để tránh quá tải
+      await new Promise(r => setTimeout(r, 500));
     } catch (error) {
       failed++;
+      console.error(`Error starting ${profileId}:`, error);
     }
   }
 
-  showNotification(`Started ${success} workers${failed > 0 ? `, ${failed} failed` : ''}`, success > 0 ? 'success' : 'error');
+  if (success > 0) {
+    showNotification(`✅ Đã mở và bắt đầu theo dõi ${success} profile(s)${failed > 0 ? `, ${failed} thất bại` : ''}`, 'success');
+  } else {
+    showNotification(`❌ Không thể bắt đầu theo dõi. Vui lòng kiểm tra Genlogin đã chạy chưa.`, 'error');
+  }
   refreshProfiles();
 }
 
@@ -693,24 +704,49 @@ function showNotification(message, type = 'info') {
   const notification = document.createElement('div');
   notification.className = `notification notification-${type}`;
   notification.textContent = message;
+  
+  let bgColor = 'var(--bg-secondary)';
+  let borderColor = 'var(--border-color)';
+  let textColor = 'var(--text-primary)';
+  
+  if (type === 'success') {
+    bgColor = 'rgba(0, 255, 136, 0.15)';
+    borderColor = 'var(--success)';
+    textColor = 'var(--success)';
+  } else if (type === 'error') {
+    bgColor = 'rgba(255, 68, 68, 0.15)';
+    borderColor = 'var(--error)';
+    textColor = 'var(--error)';
+  } else if (type === 'warning') {
+    bgColor = 'rgba(255, 170, 0, 0.15)';
+    borderColor = 'var(--warning)';
+    textColor = 'var(--warning)';
+  } else if (type === 'info') {
+    bgColor = 'rgba(0, 224, 255, 0.15)';
+    borderColor = 'var(--accent)';
+    textColor = 'var(--accent)';
+  }
+  
   notification.style.cssText = `
     position: fixed;
     top: 20px;
     right: 20px;
     padding: 12px 20px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
+    background: ${bgColor};
+    border: 1px solid ${borderColor};
     border-radius: 8px;
-    color: var(--text-primary);
+    color: ${textColor};
     z-index: 10000;
     animation: fadeIn 0.2s ease;
+    max-width: 400px;
+    box-shadow: 0 4px 12px var(--shadow);
   `;
   document.body.appendChild(notification);
   
   setTimeout(() => {
     notification.style.animation = 'fadeOut 0.2s ease';
     setTimeout(() => notification.remove(), 200);
-  }, 3000);
+  }, type === 'info' ? 2000 : 4000);
 }
 
 function copyToClipboard(text) {

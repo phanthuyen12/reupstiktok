@@ -986,6 +986,10 @@ body {
   border-color: var(--warning);
 }
 
+.notification-info {
+  border-color: var(--accent);
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .drawer {
