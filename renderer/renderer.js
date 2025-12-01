@@ -420,7 +420,7 @@ async function renderTable() {
           <td>${profile.stats.videosToday || 0}</td>
           <td>${profile.workerPid || '-'}</td>
           <td>
-            <div class="action-buttons">
+            <div class="detail-buttons">
               <button class="btn-icon" onclick="viewProfile('${profile.profileId}')" title="View Details">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -430,31 +430,6 @@ async function renderTable() {
               <button class="btn-icon" onclick="viewLogs('${profile.profileId}')" title="View Logs">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                </svg>
-              </button>
-              <button class="btn-icon" onclick="openProfileInGenlogin('${profile.profileId}')" title="Mở Profile">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                  <polyline points="15 3 21 3 21 9"></polyline>
-                  <line x1="10" y1="14" x2="21" y2="3"></line>
-                </svg>
-              </button>
-              ${profile.status === 'running' 
-                ? `<button class="btn-icon" onclick="stopMonitoringProfile('${profile.profileId}')" title="Dừng Theo dõi">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="6" y="6" width="12" height="12"></rect>
-                    </svg>
-                  </button>`
-                : `<button class="btn-icon" onclick="startMonitoringProfile('${profile.profileId}')" title="Theo dõi YouTube">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                  </button>`
-              }
-              <button class="btn-icon" onclick="closeProfile('${profile.profileId}')" title="Đóng Profile">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
                 </svg>
               </button>
             </div>
@@ -779,8 +754,6 @@ async function viewProfile(profileId) {
 
   const allProfiles = await window.electronAPI.getProfiles();
   const profileData = allProfiles.find(p => p.profileId === profileId);
-  const isRunning = profileData?.status === 'running';
-  const isOpened = profileData?.status === 'opened' || profileData?.status === 'running';
 
   const content = `
     <div class="profile-detail">
@@ -825,25 +798,12 @@ async function viewProfile(profileId) {
           </div>
         </div>
       </div>
-      <div class="detail-actions">
-        <button class="btn btn-primary" onclick="openProfileInGenlogin('${profile.profileId}')" id="btn-open-profile-${profile.profileId}" ${isOpened ? 'disabled' : ''}>
-          Mở Profile
-        </button>
-        <button class="btn btn-success" 
-                onclick="startMonitoringProfile('${profile.profileId}')" 
-                id="btn-start-monitoring-${profile.profileId}"
-                ${!isOpened || isRunning ? 'disabled' : ''}>
-          Theo dõi YouTube
-        </button>
-        <button class="btn btn-warning" 
-                onclick="stopMonitoringProfile('${profile.profileId}')" 
-                id="btn-stop-monitoring-${profile.profileId}"
-                ${!isRunning ? 'disabled' : ''}>
-          Dừng Theo dõi
-        </button>
-        <button class="btn btn-danger" onclick="closeProfile('${profile.profileId}')" id="btn-close-profile-${profile.profileId}" ${!isOpened ? 'disabled' : ''}>
-          Đóng Profile
-        </button>
+      <div class="detail-section">
+        <label>Batch Controls</label>
+        <p class="detail-hint">
+          Tất cả hành động (Mở profile, Theo dõi, Dừng, Đóng) đã được gom vào các nút tổng ở thanh công cụ.
+          Vui lòng chọn profile ở bảng và dùng các nút hàng loạt phía trên để thao tác.
+        </p>
         <button class="btn btn-secondary" onclick="viewLogs('${profile.profileId}')">
           View Logs
         </button>
@@ -1061,105 +1021,6 @@ function copyToClipboard(text) {
   showNotification('Copied to clipboard', 'success');
 }
 
-async function openProfileInGenlogin(profileId) {
-  try {
-    showNotification(`Đang mở profile ${profileId} và truy cập TikTok...`, 'info');
-    
-    const result = await window.electronAPI.openProfileTiktok(profileId);
-    if (result.success) {
-      showNotification(`✅ Profile ${profileId} đã được mở và tìm thấy input file! Bấm "Theo dõi YouTube" để bắt đầu.`, 'success');
-      refreshProfiles();
-    } else {
-      showNotification(`❌ Lỗi: ${result.error}`, 'error');
-    }
-  } catch (error) {
-    showNotification(`❌ Lỗi: ${error.message}`, 'error');
-  }
-}
-
-async function startMonitoringProfile(profileId) {
-  try {
-    showNotification(`Đang bắt đầu theo dõi kênh YouTube cho profile ${profileId}...`, 'info');
-    
-    const result = await window.electronAPI.startMonitoring(profileId);
-    if (result.success) {
-      showNotification(`✅ Đã bắt đầu theo dõi kênh YouTube và upload tự động 24/7 cho profile ${profileId}`, 'success');
-      
-      // Tự động mở monitoring panel để xem logs
-      openMonitoringPanel(profileId);
-      
-      refreshProfiles();
-      // Đóng drawer sau khi start
-      setTimeout(() => {
-        closeDrawer();
-      }, 1000);
-    } else {
-      showNotification(`❌ Lỗi: ${result.error}`, 'error');
-    }
-  } catch (error) {
-    showNotification(`❌ Lỗi: ${error.message}`, 'error');
-  }
-}
-
-// Mở monitoring panel để xem logs real-time
-function openMonitoringPanel(profileId) {
-  currentMonitoringProfileId = profileId;
-  const panel = document.getElementById('monitoring-panel');
-  const profileIdEl = document.getElementById('monitoring-profile-id');
-  
-  if (profileIdEl) {
-    profileIdEl.textContent = profileId;
-  }
-  
-  // Clear logs cũ
-  const logContent = document.getElementById('monitoring-log-content');
-  if (logContent) {
-    logContent.innerHTML = '';
-  }
-  
-  if (panel) {
-    panel.classList.add('open');
-  }
-}
-
-async function stopMonitoringProfile(profileId) {
-  try {
-    if (!confirm(`Bạn có chắc muốn dừng theo dõi cho profile ${profileId}?`)) return;
-    
-    showNotification(`Đang dừng theo dõi cho profile ${profileId}...`, 'info');
-    
-    const result = await window.electronAPI.stopMonitoring(profileId);
-    if (result.success) {
-      showNotification(`✅ Đã dừng theo dõi cho profile ${profileId}`, 'success');
-      refreshProfiles();
-    } else {
-      showNotification(`❌ Lỗi: ${result.error}`, 'error');
-    }
-  } catch (error) {
-    showNotification(`❌ Lỗi: ${error.message}`, 'error');
-  }
-}
-
-async function closeProfile(profileId) {
-  try {
-    if (!confirm(`Bạn có chắc muốn đóng profile ${profileId}?`)) return;
-    
-    showNotification(`Đang đóng profile ${profileId}...`, 'info');
-    
-    const result = await window.electronAPI.closeProfile(profileId);
-    if (result.success) {
-      showNotification(`✅ Đã đóng profile ${profileId}`, 'success');
-      refreshProfiles();
-      // Đóng drawer nếu đang mở
-      closeDrawer();
-    } else {
-      showNotification(`❌ Lỗi: ${result.error}`, 'error');
-    }
-  } catch (error) {
-    showNotification(`❌ Lỗi: ${error.message}`, 'error');
-  }
-}
-
 // Monitoring log functions
 function addMonitoringLogEntry(log) {
   if (currentMonitoringProfileId) {
@@ -1207,11 +1068,6 @@ window.stopWorker = stopWorker;
 window.viewProfile = viewProfile;
 window.viewLogs = viewLogs;
 window.copyToClipboard = copyToClipboard;
-window.openProfileInGenlogin = openProfileInGenlogin;
-window.startMonitoringProfile = startMonitoringProfile;
-window.stopMonitoringProfile = stopMonitoringProfile;
-window.closeProfile = closeProfile;
-window.openMonitoringPanel = openMonitoringPanel;
 window.closeMonitoringPanel = closeMonitoringPanel;
 window.clearMonitoringLogs = clearMonitoringLogs;
 
