@@ -4,6 +4,7 @@ const { google } = require("googleapis");
 const puppeteer = require("puppeteer-core");
 const { getDownloadLink, downloadVideo, make65sVideo, mergeVideoAudio } = require("./dow.js");
 const path = require("path");
+const fs = require("fs");
 const Genlogin = require("./Genlogin.js");
 const { performance } = require("perf_hooks");
 
@@ -67,8 +68,20 @@ async function checkChannel(channelId) {
 
 // --- Upload video (giống testdow.js)
 async function uploadVideo(page, input, filePath) {
-    await input.uploadFile(filePath);
-    parentPort.postMessage(`[${PROFILE_ID}] 📤 Upload video xong`);
+    try {
+        // Đảm bảo file path là absolute path
+        const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+        
+        if (!fs.existsSync(absolutePath)) {
+            throw new Error(`File không tồn tại: ${absolutePath}`);
+        }
+        
+        await input.uploadFile(absolutePath);
+        parentPort.postMessage(`[${PROFILE_ID}] 📤 Upload video xong`);
+    } catch (err) {
+        parentPort.postMessage(`[${PROFILE_ID}] ❌ Lỗi khi upload file: ${err.message}`);
+        throw err;
+    }
 
     const btnSelector = 'button[data-e2e="post_video_button"]';
     let success = false;
@@ -152,13 +165,21 @@ async function main() {
 
                     // 3️⃣ Ghép 65s
                     const start65s = performance.now();
-                    const finalFile = path.join("output", `video_65s_${Date.now()}.mp4`);
+                    const outputDir = path.resolve("output");
+                    if (!fs.existsSync(outputDir)) {
+                        fs.mkdirSync(outputDir, { recursive: true });
+                    }
+                    const finalFile = path.resolve(outputDir, `video_65s_${Date.now()}.mp4`);
                     await make65sVideo(rawFile, finalFile);
                     const end65s = performance.now();
                     parentPort.postMessage(`[${PROFILE_ID}] ✅ Ghép 65s xong sau ${(end65s - start65s).toFixed(2)} ms`);
 
                     // 4️⃣ Upload video
                     const startUpload = performance.now();
+                    // Đảm bảo file tồn tại trước khi upload
+                    if (!fs.existsSync(finalFile)) {
+                        throw new Error(`File không tồn tại: ${finalFile}`);
+                    }
                     await uploadVideo(page, input, finalFile);
                     const endUpload = performance.now();
 
