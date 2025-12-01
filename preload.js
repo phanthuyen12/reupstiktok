@@ -31,6 +31,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Genlogin
   openProfile: (profileId) => ipcRenderer.invoke('open-profile', profileId),
   openProfilesBatch: (profileIds) => ipcRenderer.invoke('open-profiles-batch', profileIds),
+  openProfileTiktok: (profileId) => ipcRenderer.invoke('open-profile-tiktok', profileId),
+  startMonitoring: (profileId) => ipcRenderer.invoke('start-monitoring', profileId),
+  stopProfileMonitoring: (profileId) => ipcRenderer.invoke('stop-profile-monitoring', profileId),
+
+  // Profile logs (theo dõi từng giây)
+  onProfileLog: (callback) => {
+    ipcRenderer.on('profile-log', (event, data) => callback(data));
+  },
+  onProfileNotification: (callback) => {
+    ipcRenderer.on('profile-notification', (event, data) => callback(data));
+  },
 
   // Analytics
   getAnalytics: () => ipcRenderer.invoke('get-analytics'),

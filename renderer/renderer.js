@@ -102,6 +102,18 @@ function setupIPCListeners() {
     refreshProfiles();
     updateStats();
   });
+
+  // Profile monitoring logs (theo dõi từng giây)
+  window.electronAPI.onProfileLog((data) => {
+    if (data.profileId === currentMonitoringProfileId) {
+      addMonitoringLogEntry(data.log);
+    }
+  });
+
+  // Profile notifications
+  window.electronAPI.onProfileNotification((data) => {
+    showNotification(data.message, data.type || 'success');
+  });
 }
 
 // Load Profiles
@@ -756,15 +768,82 @@ function copyToClipboard(text) {
 
 async function openProfileInGenlogin(profileId) {
   try {
-    const result = await window.electronAPI.openProfile(profileId);
+    // Mở trang log monitoring nếu chưa mở
+    if (currentMonitoringProfileId !== profileId) {
+      currentMonitoringProfileId = profileId;
+      document.getElementById('monitoring-profile-id').textContent = profileId;
+      document.getElementById('monitoring-log-content').innerHTML = '';
+      document.getElementById('monitoring-panel').classList.add('open');
+    }
+
+    showNotification(`Đang mở profile ${profileId} và truy cập TikTok...`, 'info');
+    
+    const result = await window.electronAPI.openProfileTiktok(profileId);
     if (result.success) {
-      showNotification(`Profile ${profileId} opened in Genlogin`, 'success');
+      showNotification(`✅ Profile ${profileId} đã được mở và tìm thấy input file! Bấm "Theo dõi" để bắt đầu.`, 'success');
+      // Enable nút theo dõi
+      const btnMonitoring = document.getElementById(`btn-start-monitoring-${profileId}`);
+      if (btnMonitoring) {
+        btnMonitoring.disabled = false;
+        btnMonitoring.classList.remove('disabled');
+      }
     } else {
-      showNotification(`Failed to open profile: ${result.error}`, 'error');
+      showNotification(`❌ Lỗi: ${result.error}`, 'error');
     }
   } catch (error) {
-    showNotification(`Error: ${error.message}`, 'error');
+    showNotification(`❌ Lỗi: ${error.message}`, 'error');
   }
+}
+
+async function startMonitoringProfile(profileId) {
+  try {
+    showNotification(`Đang bắt đầu theo dõi kênh YouTube cho profile ${profileId}...`, 'info');
+    
+    const result = await window.electronAPI.startMonitoring(profileId);
+    if (result.success) {
+      showNotification(`✅ Đã bắt đầu theo dõi kênh YouTube và upload tự động 24/7 cho profile ${profileId}`, 'success');
+      // Disable nút để tránh click nhiều lần
+      const btnMonitoring = document.getElementById(`btn-start-monitoring-${profileId}`);
+      if (btnMonitoring) {
+        btnMonitoring.disabled = true;
+        btnMonitoring.classList.add('disabled');
+        btnMonitoring.textContent = 'Đang theo dõi...';
+      }
+      refreshProfiles();
+      // Đóng drawer sau khi start
+      setTimeout(() => {
+        closeDrawer();
+      }, 1000);
+    } else {
+      showNotification(`❌ Lỗi: ${result.error}`, 'error');
+    }
+  } catch (error) {
+    showNotification(`❌ Lỗi: ${error.message}`, 'error');
+  }
+}
+
+// Monitoring log functions
+function addMonitoringLogEntry(log) {
+  if (currentMonitoringProfileId) {
+    const logContent = document.getElementById('monitoring-log-content');
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.innerHTML = formatLogEntry(log);
+    logContent.appendChild(entry);
+    logContent.scrollTop = logContent.scrollHeight;
+  }
+}
+
+function closeMonitoringPanel() {
+  document.getElementById('monitoring-panel').classList.remove('open');
+  if (currentMonitoringProfileId) {
+    window.electronAPI.stopProfileMonitoring(currentMonitoringProfileId);
+    currentMonitoringProfileId = null;
+  }
+}
+
+function clearMonitoringLogs() {
+  document.getElementById('monitoring-log-content').innerHTML = '';
 }
 
 function escapeHtml(text) {
@@ -791,4 +870,7 @@ window.viewProfile = viewProfile;
 window.viewLogs = viewLogs;
 window.copyToClipboard = copyToClipboard;
 window.openProfileInGenlogin = openProfileInGenlogin;
+window.startMonitoringProfile = startMonitoringProfile;
+window.closeMonitoringPanel = closeMonitoringPanel;
+window.clearMonitoringLogs = clearMonitoringLogs;
 
